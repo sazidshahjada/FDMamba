@@ -401,16 +401,16 @@ FD-MambaDR/
 
 ```python
 model = build_model(
-    backbone="mobilenetv3_large",   # or efficientnet_b0 / resnet50
-    variant="B3",                   # B0, B1, B2, B3
+    backbone="mobilenetv3_large",  # or efficientnet_b0 / resnet50
+    variant="B3",  # B0, B1, B2, B3
     num_classes=5,
-    pretrained=False,               # must remain False for all primary runs
-    fdconv_cfg={"target": "verified_module_path", "kernel_num": 4},
-    mamba_cfg={"stage": "verified_stage", "d_model": 64},
+    pretrained=False,  # must remain False for all primary runs
+    fdconv={"layer_path": "verified_module_path", "kernel_num": 4},
+    mamba={"hidden_dim": 64},
 )
 ```
 
-This is an **interface target**, not a claim that this exact function signature is already implemented. Resolved target modules and parameter deltas must be logged automatically. Fail loudly when requested FDConv/Mamba was not actually inserted.
+This interface is implemented in `fdmambadr.factory.build_model` and re-exported from `fdmambadr`. Resolved FDConv paths are saved in `model.build_config`; replacement parameter counts are saved in trainer configuration. Fusion placement remains fixed after `forward_features`. See `README.md` for the current executable layout and `docs/IMPLEMENTATION_STATUS.md` for verification limits.
 
 ### 7.2 Data manifest contract
 

@@ -17,6 +17,7 @@ The default classification interface returns logits [B, num_classes]. The
 feature interface returns a spatial tensor [B, C, H, W] using the same model
 parameters, suitable for adding FDConv or a Mamba feature-fusion block.
 """
+
 from __future__ import annotations
 
 from typing import Dict, Tuple
@@ -80,6 +81,9 @@ class Backbone(nn.Module):
             supported = ", ".join(self.supported_names())
             raise ValueError(f"Unsupported backbone {name!r}. Supported: {supported}")
 
+        self.config = dict(
+            name=name, num_classes=num_classes, in_chans=in_chans, drop_rate=drop_rate
+        )
         self.name = key
         self.timm_name = self._NAMES[key]
         self.num_classes = num_classes

@@ -1,0 +1,12 @@
+# CPU/basic dependencies. Install the appropriate torch/torchvision wheel pair first.
+# B2/B3 additionally require the CUDA extension environment in environment.yml.
+torch==2.5.1
+torchvision==0.20.1
+timm==0.9.16
+numpy==1.26.4
+scikit-learn==1.5.2
+Pillow==11.0.0
+matplotlib==3.9.2
+PyYAML==6.0.2
+einops==0.8.0
+tqdm==4.67.1

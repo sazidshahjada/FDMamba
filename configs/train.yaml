@@ -1,0 +1,32 @@
+# Edit dataset paths and output_dir. Paths resolve from the working directory.
+model:
+  backbone: mobilenetv3
+  variant: B0                     # B0, B1, B2 or B3
+  num_classes: 5
+  pretrained: false
+  # For B1/B3, optionally set fdconv: {layer_path: blocks.2.2.conv_pwl}
+  # For B2/B3, optionally set mamba: {hidden_dim: 64}
+data:
+  train_path: data/processed/Unified_DR_(EyePacsAptos,Messidor)/augmented_resized_V2/train
+  val_path: data/processed/Unified_DR_(EyePacsAptos,Messidor)/augmented_resized_V2/val
+  test_path: data/processed/Unified_DR_(EyePacsAptos,Messidor)/augmented_resized_V2/test  # Evaluated after training; set null to skip.
+  image_size: 224
+  batch_size: 32
+  num_workers: 0
+  augment: false                 # Current dataset already has offline augmentation.
+  mean: null                     # Or three training-fitted RGB means.
+  std: null                      # Or three training-fitted RGB standard deviations.
+loss:
+  name: balanced_ce              # Training-label inverse-frequency cross-entropy.
+training:
+  output_dir: experiments/MNV3_B0_seed42
+  saved_weights_dir: saved_weights  # Descriptive best/last checkpoints for later testing.
+  seed: 42
+  epochs: 100
+  warmup_epochs: 5
+  patience: 15
+  device: null                   # Automatically use CUDA if available.
+  amp: false                     # Enable only after device-specific smoke tests.
+  optimizer_kwargs:
+    lr: 0.0001
+    weight_decay: 0.0001

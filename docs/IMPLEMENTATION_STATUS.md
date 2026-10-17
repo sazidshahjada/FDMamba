@@ -1,247 +1,151 @@
-# Implementation review — 17 October 2026
+# Code review and revision — 17 October 2026
 
-Reviewed `project_overview.md` and all five existing Python modules. The repository
-contained model code and two external annotation CSVs; it contained no training,
-evaluation, dataset-loader, or checkpoint-management implementation. No existing
-`AGENTS.md`, prior status document, supplied MambaLiteUNet archive, or original
-FDConv backup was present.
+## Verdict
 
-## Corrections
+The uploaded implementation is broadly consistent with the current project plan.
+Its default B0/B1 model, loss, metric and training behavior passes the available CPU
+checks. This revision fixes orchestration/reproducibility gaps and makes the code
+easier to use and extend. It does **not** establish correctness of real CUDA Mamba,
+all optional FDConv configurations, the real dataset's labels/splits, or trained
+model performance.
 
-| Finding | Resolution |
+`fdmambadr/FDConv.py` is **byte-for-byte unchanged**, including its documentation.
+Its SHA-256 before and after this revision is:
+
+```text
+000a82f7daa8b52ef02e3e6f839e7ed92ac6e04b4ed575ab2effedfd3d94af79
+```
+
+The supplied file already contained earlier standalone adaptations. Those are
+preserved, not attributed to this revision. The original status file is retained
+as `PRIOR_IMPLEMENTATION_NOTES.md`, explicitly marked historical.
+
+## Findings and resolutions
+
+| Finding in the uploaded archive | Revision |
 |---|---|
-| `fdconv_models.py` imported nonexistent `.backbones` | Import the existing `.backbone`. Correct stale paths/documentation. |
-| MobileNetV3 spatial features have 960 channels, while `num_features` on its timm model reports the 1280-channel classifier embedding | The wrapper exposes the channel count before `conv_head`; B2 and B3 use that shared resolution. EfficientNet and ResNet remain 1280 and 2048. |
-| B3 added a second FDConv in its fusion branch, changing two components compared with B2 | B3 now composes the B1 adapter with the exact B2 fusion class. Removed `FDConvLocalGlobalFusion`, `local_kernel_num`, and `local_fdconv_kwargs`. Old hybrid states/configs are incompatible and require a fresh run. |
-| Eager Mamba imports blocked module inspection without CUDA extensions | Import Mamba on fusion construction. B2/B3 still fail clearly if its real implementation is unavailable; CPU forwards are rejected explicitly. |
-| B2 had different backbone-name validation and no classifier dropout option | Reuse baseline construction/aliases and expose `drop_rate` separately from fusion `dropout`. Validate supported Mamba settings. |
-| Adapter could select SE pooled-descriptor convolutions or silently construct inactive FDConv | Exclude SE and unsupported padding sites; require active spectral parameters. Record padding/dilation, bias, and parameter counts with the selected layer. |
-| FDConv required MMCV although no detection/segmentation registry was used | Remove registry import/decorator and unused NumPy/Matplotlib/timm imports. Retain the supplied FDW, global/local KSM, and FBM algorithms. |
-| KSM global pooled BatchNorm failed during training with batch size one | Use its running statistics for a singleton descriptor, preserving affine gradients; larger batches retain standard BatchNorm. This is an explicit small-batch behavior choice. |
-| FBM interpolated a fixed-size frequency mask, shifting cutoffs on smaller and odd grids | Recompute masks from the actual FFT bins when spatial dimensions change; cache the last size as a nonpersistent buffer. |
-| Kernel inverse FFT inferred an even width and failed with odd channel/kernel products | Supply the original two-dimensional FFT shape. Also supply the original length in local KSM's optional 1-D inverse FFT. |
-| `kernel_num=1` produced a scalar attention followed by a tensor reshape | Broadcast scalar kernel attention explicitly. |
-| FDConv ignored its stride eligibility list | Honor stride eligibility and use ordinary convolution for ineligible cases; the backbone adapter continues to require active FDConv. |
-| Several unsupported FDConv configurations failed inside tensor reshaping or silently lost options | Reject invalid kernel partition counts, grouped/nonsquare active kernels, nonzero padding modes, invalid temperatures/reductions, spatial frequency decomposition, unsupported attention grids, and incompatible softmax modulation. |
-| Filter attention initialization checked a bound method instead of the filter convolution | Apply the intended small initialization to `filter_fc`. |
-| Checkpoint mode omitted an explicit PyTorch reentrancy choice | Use `use_reentrant=False`. |
-| `profile_module` referenced undefined attributes and returned an unvalidated estimate | Raise a descriptive `NotImplementedError`; use runtime profiling and disclose missing FFT/dynamic-kernel MAC accounting. |
+| README/status claimed training and checkpoint support were unimplemented, although a substantial trainer and tests already existed. The documented Conda activation name also differed from the YAML. | Replaced stale operational documentation and corrected activation to `fdmambadr`. Historical notes are separate. |
+| Model construction required choosing among four constructors with different FDConv/fusion keyword names. | Added one `build_model` factory with B0–B3 selection and explicit rejection of unused/inapplicable options. Existing constructors remain. |
+| B0/B1/B2 lacked consistent constructor metadata; no general executable checkpoint reconstruction path existed. | Added model configuration records and `model.build_config`, including resolved FDConv paths; checkpoints retain the build specification. |
+| Local/global fusion lived in the B2 model file; B2 and B3 duplicated their forward routing. | Extracted the shared fusion implementation and common forward interface without changing parameter paths or computation. |
+| The trainer combined process RNG utilities, data metadata handling, batch execution, selection and persistence in one file. | Moved runtime helpers, dataset checks and the epoch execution base into focused modules. Kept the public trainer and its supported hooks. |
+| A fully frozen model could not construct a trainer for evaluation because an optimizer with trainable parameters was mandatory. An existing test worked around this by unfreezing one weight. | Evaluation accepts fully frozen models with no optimizer; removed the workaround and added a regression. |
+| Validation normalization was not compared with training at trainer construction; only final evaluation checked it. | Training/validation/test normalization metadata must match before fitting. |
+| `seed_everything(..., deterministic=False)` left deterministic mode enabled after a prior `True` call. | Explicitly applies either setting and records the actual runtime mode. |
+| Resuming into another directory could retain the historical best score without retaining its checkpoint, leaving `best.pt` unavailable if no new best occurred. | Require resume within the checkpoint run directory and require the historical `best.pt` when a prior best exists. Relocate the complete run directory. |
+| Temporary checkpoint evaluation copied the current model state on its current device, adding an avoidable model-sized GPU allocation. | Save the temporary state on CPU and restore it after evaluation or errors. This trades host memory for lower device-memory demand. |
+| There was no concise runnable train/evaluate workflow; training-folder construction required a test path. | Added `train.py`, `evaluate.py`, one example YAML, optional test-path loading and `create_eval_loader`. Training and test execution are separate. |
+| Formatting and documentation were inconsistent, with optional plotting mixed into data loading. | Applied consistent formatting/import cleanup outside FDConv, added concise responsibility-level docstrings, and separated plotting while preserving its old import. Ruff explicitly excludes FDConv. |
 
-No pretrained weights are enabled. The FDConv layer receives a fresh random
-spatial initialization before Fourier conversion. Shared backbone layers are not
-copied from a trained model. No accuracy, clinical, or generalization claims have
-been tested.
+## Methodological choices retained
 
-## Resolved architecture choices
+- Three scratch-initialized timm backbones; no pretrained weights or downloads.
+- One selected active FDConv replacement for B1/B3, preserving the supplied source.
+- The same shared-projection local/Mamba gated residual block for B2/B3, after
+  `forward_features` and before the native classifier head.
+- Native heads by default; the existing dense-head wrapper remains optional.
+- Training-only inverse-frequency CE weights, with existing CE/focal alternatives.
+- Whole-split metrics, ordinal five-class QWK, strict-best validation selection,
+  early stopping, full optimizer/scheduler/scaler/RNG checkpointing and prediction exports.
+- Publisher-provided splits and the explicitly deferred comprehensive leakage audit.
 
-B2 and B3 share one projected feature tensor between their local depthwise/PW
-convolution and Mamba branches, as the original B2 implementation did. Fusion is
-after `forward_features`, before the original classification head. This retains
-the existing shared-projection adaptation of the overview's schematic, which
-depicts separate branch projections. Both branches use raster ordering and a
-learned residual scale initialized to 0.01.
+The CLI provides the proposed AdamW/warm-up/cosine recipe. The existing direct
+`Trainer` API retains optimizer/scheduler/loss customization for planned extensions.
+No custom SSM, extra convolution branch, bidirectional scan, new loss objective,
+pretraining policy or data-split methodology was introduced.
 
-With timm **0.9.16**, default B1/B3 replacement selection resolves to:
+## Runtime reporting and saved-weight exports — 17 October 2026
 
-| Backbone | Path relative to timm model | Channels | Kernel | FBM |
-|---|---|---|---|---|
-| MobileNetV3-Large | `blocks.2.2.conv_pwl` | 120 → 40 | 1×1 | Disabled by source defaults |
-| EfficientNet-B0 | `blocks.2.0.conv_pwl` | 144 → 40 | 1×1 | Disabled by source defaults |
-| ResNet-50 | `layer3.3.conv2` | 256 → 256 | 3×3 | Enabled |
+Training and checkpoint evaluation now print device/GPU, model and parameter
+details, image size, class order, split sizes, per-class counts and loader settings.
+Label counts use metadata, including nested Subsets, without decoding images.
+`verbose=False` suppresses these messages; `evaluate.py --quiet` retains JSON-only
+CLI output.
 
-MobileNet/EfficientNet use ungrouped pointwise operations because their spatial
-operations are depthwise; this is a comparison limitation. FDW and KSM are active
-at all three sites. Auto-selection depends on timm version and configuration;
-save `replacement` metadata and freeze an explicit `layer_path` for actual runs.
+Completed fits export full best/last checkpoint copies to `saved_weights` by
+default, with backbone, variant/method, run name, seed and epoch in each filename.
+`training.saved_weights_dir` changes the destination or disables copies with null.
+The copies retain reconstruction/preprocessing metadata and work with `evaluate.py`.
+Export happens before automatic testing, including after early stopping.
 
-## Validation
+Focused CPU verification: **7 runtime/export checks and 6 existing training-progress
+regressions passed**. Checks covered distinct best/final weights, checkpoint reload,
+metadata-only split counts, quiet output, undefined-QWK fallback, early stopping,
+resume, and saving before a simulated test failure. A synthetic five-class B0 run
+was evaluated through both the Python and CLI interfaces from its exported file,
+after moving the original train/validation directories out of the way. Syntax and
+CLI-help checks passed. Ruff was unavailable in the local environment. No full
+dataset training or CUDA verification was performed for this update.
 
-Available execution environment: Python **3.12.12**, PyTorch **2.11.0+cu130**,
-timm **0.9.16**, **CPU**. No CUDA device, CUDA compiler, `mamba_ssm`, or
-`causal_conv1d` is available here. This is distinct from the proposed GPU YAML.
+## Current verification
 
-| Check | Result |
-|---|---|
-| Parse all model/test Python files; parse environment YAML | Passed |
-| Conda dry-run dependency solve of `environment.yml` | Passed; resolves CUDA PyTorch 2.5.1, CUDA torchvision 0.20.1, torchtriton 3.1.0 and Python 3.11 |
-| `python -m unittest discover -s tests -v` | 13 tests: 11 passed, 2 CUDA tests skipped |
-| B0 and B1, all three backbones, `[1,3,224,224]` | Five logits, finite loss/gradients, two AdamW steps, evaluation forward passed |
-| FDConv spectral/global KSM/local KSM/FBM gradients and upstream gradients | Passed isolated tests; spectral gradient is nonzero after the second model step |
-| Odd FFT widths, one kernel, batch sizes 1 and 2 | Passed |
-| FBM frequency decomposition compared with directly constructed FFT masks | Passed multiple odd/even grids |
-| Spatial vs spectral parameterization and serialized state round trip | Passed |
-| CPU bfloat16 autocast with FP32 FDConv internals | Passed |
-| Invalid replacement sites and silently inactive FDConv | Rejected as expected |
-| B2/B3 real CUDA/selective scan, GPU AMP, GPU optimizer steps | **Pending GPU verification**; tests included, no surrogate Mamba used |
-| Full environment installation and import of its binary extensions | **Not performed**; no GPU available |
+**Environment:** Python 3.12.14, PyTorch 2.5.1+cpu, torchvision 0.20.1+cpu,
+timm 0.9.16, NumPy 1.26.4, scikit-learn 1.5.2. No CUDA device is available.
+The supplied GPU environment was retained; it was not installed or certified here.
 
-ResNet's standard timm initialization zeros the last BatchNorm scale in residual
-branches. Some convolution gradients are therefore initially zero; the tests
-verify nonzero FDConv spectral gradients after that scale's first optimizer
-update, without changing the baseline initialization policy.
+```bash
+FDMAMBDR_SKIP_WORKERS=1 python -m unittest discover -s tests -v
+python -m ruff check .
+python -m ruff format --check .
+python -m compileall -q .
+python train.py --help
+python evaluate.py --help
+```
 
-The YAML pins PyTorch/torchvision/CUDA and uses official CPython 3.11, Linux
-x86_64, CUDA 12, torch 2.5, C++ ABI FALSE extension wheels. Their asset names were
-verified against the official GitHub release metadata. This avoids compiling
-Mamba against an isolated or mismatched PyTorch. It is not a cross-platform lock
-file; export the fully resolved environment and hardware details on the training
-machine. The Conda dry run checks Conda package resolution; it does not install or
-execute the pip extension wheels. Dependencies for image processing, manifests, QWK/F1 metrics, plots,
-TensorBoard, and resource monitoring are included.
+**66 tests discovered: 58 passed, 8 skipped, 0 failures/errors.** Seven skips
+require CUDA (real Mamba, AMP or CUDA tensor tests). One explicit worker-process
+skip is necessary because this execution environment denies worker IPC sockets;
+an initial worker attempt failed at that environment restriction. The normal
+local test command leaves the worker test enabled. Full output is retained in
+`TEST_RESULTS.txt`. Lint, formatting, compilation and CLI help checks passed.
 
-## Configurable classifier wrapper
+Verified checks include:
 
-Added `fdmambadr/wrapper.py` with `BackboneWrapper`. Its first argument is a
-backbone **class** (`Backbone`, `FDConvBackbone`, `MambaBackbone`, or
-`HybridBackbone`), followed by the architecture name and output class count.
-Hidden widths, per-layer/shared dropout, activation class and arguments,
-normalization, linear biases, and backbone constructor options are configurable.
+- B0/B1 for all three backbones at 224-pixel input, singleton batches, finite
+  losses/gradients, optimizer updates and evaluation.
+- Active FDConv spectral/KSM/FBM gradients, odd FFT grids, single-kernel mode,
+  spectral/spatial parameterization agreement, state serialization and CPU autocast.
+- Factory/direct-constructor equality for seeded MobileNet B0/B1, and rebuilding
+  those models from the saved factory configuration.
+- CE/focal formula and gradient comparisons; weighted loss/gradient accumulation
+  consistency with incomplete batches; metric comparisons against scikit-learn.
+- Correct best-vs-last selection, undefined QWK handling, no test-batch access
+  during fitting, state restoration after evaluation errors and exact tested
+  epoch-boundary resume with all process RNGs and `num_workers=0`.
+- A synthetic five-grade ImageFolder run through the B1 training entry point,
+  checkpoint export, then frozen external evaluation after removing training and
+  validation files. Every external example was exported. This verifies plumbing,
+  **not DR accuracy or generalization**.
+- Fully frozen evaluation, pretraining/unused-option rejection, normalization
+  mismatch rejection, deterministic-mode reset and missing-best resume rejection.
 
-The wrapper removes the native final linear classifier and delegates spatial
-feature processing and pooling/projection to the selected backbone. This keeps
-MobileNet's native 1280-dimensional projected embedding separate from its
-960-channel spatial map and avoids retaining unused classifier parameters.
-The wrapper is optional; existing constructors retain their native heads.
-It does not enable pretrained weights. Keep head settings identical across
-paired ablations, and record `model.config` plus resolved backbone metadata.
+## Remaining boundaries and deferred work
 
-Validation: `python -m unittest discover -s tests -p test_wrapper.py -v` ran
-**5 tests: 4 passed, 1 CUDA test skipped**. Verified all three architectures with
-both B0/B1 classes, batch-one forward/backward with finite gradients for every
-retained parameter, varying spatial sizes, linear-only heads, custom class
-counts, activation arguments, dense BatchNorm with batch two, grayscale inputs,
-FDConv constructor options, and rejected invalid settings. Real B2/B3 wrapper
-execution remains pending CUDA; a GPU integration test is included.
-
-## ImageFolder loaders and grid visualization
-
-Implemented `utils/loaders.py`:
-
-- `create_dataloaders(train_path, val_path, test_path, ...)` returns loaders keyed
-  by `train`, `val`, and `test`. Images are decoded as RGB, resized, and converted
-  to float32 tensors. Only training is shuffled or optionally augmented. All
-  validation/test examples are retained with deterministic transforms.
-- Labels follow an explicit ordered class mapping (default DR folders `0..4`).
-  Missing split classes preserve their indices; unexpected directories and empty
-  datasets fail. Datasets expose discovered samples, labels and class counts.
-- Optional normalization is shared across splits. `compute_train_mean_std` fits
-  the resized training pixels only; no automatic all-dataset statistics scan or
-  ImageNet normalization is applied. It reads all training images if invoked.
-- Worker seeding, independent split generators, optional pinned memory, and
-  persistent workers are supported. Zero workers is the portable default.
-- `visualize_images(loaders, rows, cols, split, ...)` renders labeled grids,
-  reverses normalization, supports saving, hides unused cells, and preserves
-  CPU augmentation and loader shuffle RNG state.
-- Equal/nested split roots are rejected. This does not replace duplicate,
-  patient/provenance, symlinked-file, or full-image integrity auditing.
-
-Validation: **7 synthetic loader tests passed**, including multi-worker loading,
-fixed labels with absent classes, deterministic evaluation, full held-out sample
-coverage, grayscale-to-RGB conversion, train-only pixel statistics, normalization,
-grid saving/RNG preservation, and invalid inputs. The multi-worker test passed
-outside the sandbox, which restricts local process communication.
-
-A batch of two images from each real split of the on-disk
-`augmented_resized_V2` collection loaded as finite `[2,3,224,224]` tensors with
-valid labels. ImageFolder discovered **115,241 training**, **14,227 validation**,
-and **14,201 test** image files. These are file counts, not verified independent
-retinas; only the sampled batches were decoded in this smoke check. No full
-training, duplicate/patient audit, or external evaluation was performed.
-
-## Classification losses
-
-Implemented `utils/losses.py` with:
-
-- `CrossEntropy`: PyTorch-compatible hard-label cross-entropy with optional class
-  weights, label smoothing, ignored labels and none/sum/mean reductions.
-- `BalancedCrossEntropy`: fixed training inverse-frequency weights
-  `N / (C * count[c])`. A count vector is accepted directly;
-  `from_dataset(loaders['train'].dataset)` computes counts from existing labels
-  without reading pixels. Absent training classes fail explicitly. The term
-  "balanced" here denotes inverse-frequency weighting. Weights/counts are buffers.
-- `FocalLoss`: multiclass softmax adaptation of Lin et al., with configurable
-  nonnegative gamma and scalar/per-class alpha. The focusing probability comes
-  from unweighted cross-entropy; alpha is applied afterwards. Its mean reduction
-  averages over nonignored samples, while weighted CE uses target-weight sums.
-
-Inputs are logits `[B,C]` and integer `torch.long` labels `[B]`. FP16/bfloat16
-inputs use FP32 arithmetic. Empty/all-ignored batches return differentiable zero;
-cross-entropy also returns zero for a zero-effective-weight batch. The focal
-factor uses `expm1` and a tiny clamp to keep confident-prediction gradients finite
-with fractional gamma. Training counts must never be fitted on held-out labels.
-
-Validation: **11 loss tests: 10 passed, 1 CUDA test skipped**. Checked CE values
-and gradients against PyTorch, all reductions, smoothing, class weights/counts,
-dataset label ordering and buffer restoration, the independent focal formula,
-gamma-zero equivalence, scalar alpha scaling, ignored labels, extreme logits,
-FP16/bfloat16/FP32/FP64 focal gradients, double-precision gradient checks, and CPU
-autocast/AdamW updates. Real GPU loss/AMP execution remains pending.
-
-A real two-image training batch was also passed through `BackboneWrapper` with
-MobileNetV3. All three losses and their classification-head gradients were finite;
-balanced/focal weights used the training ImageFolder label counts only. This was
-a forward/backward smoke check, not a completed training experiment.
-
-References: [PyTorch CrossEntropyLoss](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html),
-[Lin et al., Focal Loss](https://arxiv.org/abs/1708.02002).
-
-## Classification metrics
-
-Implemented `utils/metrics.py` with `compute_metrics(predictions, targets)` and
-`ClassificationMetrics.update/compute/reset` for epoch/split accumulation.
-Reports include accuracy, balanced accuracy, macro precision/recall/F1, QWK,
-per-grade precision/recall/F1/support, and a fixed-size confusion matrix with
-true labels in rows. QWK uses actual ordinal grade distances, retaining missing
-intermediate grades. Metrics are computed on the concatenated split, never by
-averaging batch QWK/F1 values.
-
-Logits, explicit probability matrices, and hard predictions are supported.
-Tensor inputs are detached and moved to CPU; label order, shapes, finite scores,
-probability normalization and bounds are checked. Ignored labels are excluded;
-empty/all-ignored splits fail. Inputs are copied, reset clears accumulated data,
-and `get_predictions()` supplies CPU arrays for future export scripts.
-
-Macro scores include all configured grades with zero for undefined per-class
-precision/recall/F1. Balanced accuracy averages recall over true classes present
-in the split. QWK with zero expected disagreement returns `None` and a reason.
-The JSON-serializable report contains no NaN; an undefined QWK must be handled
-explicitly by the future checkpoint selector.
-
-The exploratory referable-DR report uses true grade >=2 by default. With scores,
-it sums grade 2–4 probabilities, applies a preselected threshold of 0.5 for
-sensitivity/specificity, and computes AUC from the continuous sum. Hard-grade
-inputs use the predicted-grade boundary and have no AUC. Missing true binary
-groups produce `None` for the affected rates/AUC, with explicit reasons.
-Boundary/threshold are configurable; no external threshold fitting occurs.
-
-Validation: **9 metric tests: 8 passed, 1 CUDA test skipped**. Compared accuracy,
-balanced accuracy, QWK, F1, per-class scores and confusion matrices against
-scikit-learn; checked probability/logit equivalence, unequal-batch accumulation,
-missing grades, single-class degeneracy, binary sensitivity/specificity/AUC,
-summed-probability decisions, ignored/empty input, reset/copy isolation, invalid
-inputs, strict JSON serialization and extreme/half/bfloat16 logits. Actual CUDA
-tensor ingestion remains pending GPU verification. No trained-model performance
-or external evaluation was measured.
-
-References: [scikit-learn QWK](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.cohen_kappa_score.html),
-[balanced accuracy](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.balanced_accuracy_score.html),
-[ROC-AUC](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html).
-
-## Remaining implementation and experimental work
-
-- Implement portable manifests, dataset identities and CSV-driven external
-  loaders; verify each source's grade mapping. Preserve the supplied split policy
-  and deferred-audit caveats.
-- Implement the common training loop, integrate the training-fitted loss, validation QWK
-  selection, deterministic tie policy, early stopping, complete checkpoint/RNG
-  resume, saved configurations, and prediction/metric exports.
-- Implement frozen-checkpoint internal and per-source external evaluation,
-  environment capture, runtime benchmarks, and the 8/12-run experiment launcher.
-- On the GPU machine, create the YAML environment, run `pip check`, explicitly
-  verify CUDA/extension imports, and run the full regression suite without skips.
-- Perform dataset integrity checks and a short real-data run before full
-  experiments. No dataset audit, full training, or external evaluation ran here.
-
-Dependency references: [PyTorch 2.5.1 installation matrix](https://pytorch.org/get-started/previous-versions/#v251),
-[Mamba 2.2.4 release](https://github.com/state-spaces/mamba/releases/tag/v2.2.4),
-[causal-conv1d 1.5.4 release](https://github.com/Dao-AILab/causal-conv1d/releases/tag/v1.5.4).
+1. **CUDA:** Real B2/B3 execution and GPU AMP are unverified. Run the full suite
+   on the intended GPU environment without CUDA skips before training. No fake
+   Mamba module was used to claim a pass.
+2. **Actual data:** No dataset was attached. Labels, corrupt-file prevalence,
+   patient independence and duplicate families remain unverified. Folder loaders
+   validate class names, nonempty partitions and root separation; decoding errors
+   propagate. Fingerprints hash ordered paths/labels, **not image bytes**. They do
+   not establish leakage freedom or detect identical images under different paths.
+3. **Data adapters and tooling:** CSV manifest generation/loaders, exact-file and
+   near-duplicate audits, priority-eight/full-twelve launchers, benchmarks and
+   reporting plots are still planned extensions. This cleanup does not claim the
+   entire research execution plan is complete.
+4. **Backbone comparability:** MobileNet/EfficientNet use 1x1 pointwise FDConv
+   without default FBM; ResNet uses 3x3 with FBM. See `ARCHITECTURE.md` for sites.
+5. **Resume:** Exact replay is tested at epoch boundaries with zero workers.
+   Persistent worker augmentation RNGs are not checkpointed. Full old trainer
+   checkpoints may fail the stricter/new model-configuration signature; see the
+   compatibility section in `ARCHITECTURE.md`.
+6. **Precision/options:** Keep model weights FP32 and use autocast. Direct
+   `model.half()`, torch.compile, arbitrary FDConv nondefault parameters and
+   unsupported input sizes have not been certified. Native BatchNorm retains its
+   usual batch/spatial-size constraints.
+7. **Evaluation:** The CLI reconstructs native-head factory models. Custom heads
+   or custom datasets use the Python API and an explicitly matching constructor.
+   Evaluation requires known deterministic transforms and saved normalization;
+   custom transform behavior remains the caller's responsibility.
+8. **Claims:** No full training, real DR prediction scores, clinical validity,
+   performance advantage, latency, FLOPs or external independence is reported.

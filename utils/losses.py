@@ -3,6 +3,7 @@
 BalancedCrossEntropy uses inverse-frequency TRAIN class weights. FocalLoss is
 the softmax multiclass adaptation of Lin et al. (https://arxiv.org/abs/1708.02002).
 """
+
 from __future__ import annotations
 
 import math
@@ -21,7 +22,9 @@ def _vector(values: Sequence[float] | Tensor, name: str, *, positive=False) -> T
         raise ValueError(f"{name} must be a vector ordered by class index") from exc
     if result.is_complex() or result.ndim != 1 or result.numel() == 0:
         raise ValueError(f"{name} must be a nonempty one-dimensional vector")
-    result = result.to(dtype=torch.float64 if positive or result.dtype == torch.float64 else torch.float32)
+    result = result.to(
+        dtype=torch.float64 if positive or result.dtype == torch.float64 else torch.float32
+    )
     if not torch.isfinite(result).all() or (result <= 0 if positive else result < 0).any():
         qualifier = "positive" if positive else "nonnegative"
         raise ValueError(f"{name} must contain finite {qualifier} values")
@@ -51,8 +54,13 @@ def _inputs(logits: Tensor, targets: Tensor) -> Tensor:
     return logits.float() if logits.dtype in (torch.float16, torch.bfloat16) else logits
 
 
-def _reduce(losses: Tensor, targets: Tensor, reduction: str, ignore_index: int,
-            class_weights: Tensor | None = None) -> Tensor:
+def _reduce(
+    losses: Tensor,
+    targets: Tensor,
+    reduction: str,
+    ignore_index: int,
+    class_weights: Tensor | None = None,
+) -> Tensor:
     if reduction == "none":
         return losses
     total = losses.sum()
@@ -79,15 +87,23 @@ class CrossEntropy(nn.CrossEntropyLoss):
     returns zero. No softmax should be applied before calling this loss.
     """
 
-    def __init__(self, weight: Sequence[float] | Tensor | None = None,
-                 ignore_index: int = -100, reduction: str = "mean",
-                 label_smoothing: float = 0.0) -> None:
+    def __init__(
+        self,
+        weight: Sequence[float] | Tensor | None = None,
+        ignore_index: int = -100,
+        reduction: str = "mean",
+        label_smoothing: float = 0.0,
+    ) -> None:
         _settings(reduction, ignore_index)
         if not isinstance(label_smoothing, Real) or not 0 <= label_smoothing <= 1:
             raise ValueError("label_smoothing must be in [0, 1]")
         weights = None if weight is None else _vector(weight, "weight")
-        super().__init__(weight=weights, ignore_index=ignore_index,
-                         reduction=reduction, label_smoothing=float(label_smoothing))
+        super().__init__(
+            weight=weights,
+            ignore_index=ignore_index,
+            reduction=reduction,
+            label_smoothing=float(label_smoothing),
+        )
 
     def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
         logits = _inputs(logits, targets)
@@ -96,9 +112,14 @@ class CrossEntropy(nn.CrossEntropyLoss):
             if weight.numel() != logits.shape[1]:
                 raise ValueError("weight must have one entry per logit class")
             weight = weight.to(device=logits.device, dtype=logits.dtype)
-        losses = F.cross_entropy(logits, targets, weight=weight, reduction="none",
-                                 ignore_index=self.ignore_index,
-                                 label_smoothing=self.label_smoothing)
+        losses = F.cross_entropy(
+            logits,
+            targets,
+            weight=weight,
+            reduction="none",
+            ignore_index=self.ignore_index,
+            label_smoothing=self.label_smoothing,
+        )
         return _reduce(losses, targets, self.reduction, self.ignore_index, weight)
 
 
@@ -115,13 +136,21 @@ class BalancedCrossEntropy(CrossEntropy):
     registered buffers, so they are saved in state_dict and follow .to(device).
     """
 
-    def __init__(self, class_counts: Sequence[float] | Tensor,
-                 ignore_index: int = -100, reduction: str = "mean",
-                 label_smoothing: float = 0.0) -> None:
+    def __init__(
+        self,
+        class_counts: Sequence[float] | Tensor,
+        ignore_index: int = -100,
+        reduction: str = "mean",
+        label_smoothing: float = 0.0,
+    ) -> None:
         counts = _vector(class_counts, "class_counts", positive=True).to(torch.float64)
         weights = (counts.sum() / (counts.numel() * counts)).to(torch.float32)
-        super().__init__(weight=weights, ignore_index=ignore_index,
-                         reduction=reduction, label_smoothing=label_smoothing)
+        super().__init__(
+            weight=weights,
+            ignore_index=ignore_index,
+            reduction=reduction,
+            label_smoothing=label_smoothing,
+        )
         self.register_buffer("class_counts", counts)
 
     @classmethod
@@ -131,9 +160,16 @@ class BalancedCrossEntropy(CrossEntropy):
             raise TypeError("dataset must expose ImageFolder-style classes and targets")
         labels = torch.as_tensor(dataset.targets)
         num_classes = len(dataset.classes)
-        if (labels.ndim != 1 or labels.numel() == 0 or num_classes == 0
-                or labels.is_floating_point() or labels.is_complex() or labels.dtype == torch.bool
-                or (labels < 0).any() or (labels >= num_classes).any()):
+        if (
+            labels.ndim != 1
+            or labels.numel() == 0
+            or num_classes == 0
+            or labels.is_floating_point()
+            or labels.is_complex()
+            or labels.dtype == torch.bool
+            or (labels < 0).any()
+            or (labels >= num_classes).any()
+        ):
             raise ValueError("Training targets must be integer indices within dataset.classes")
         counts = torch.bincount(labels.to(torch.long), minlength=num_classes)
         return cls(counts, **kwargs)
@@ -153,9 +189,13 @@ class FocalLoss(nn.Module):
     normalized by the sum of class weights. All-ignored/empty batches return 0.
     """
 
-    def __init__(self, gamma: float = 2.0,
-                 alpha: float | Sequence[float] | Tensor | None = None,
-                 reduction: str = "mean", ignore_index: int = -100) -> None:
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        alpha: float | Sequence[float] | Tensor | None = None,
+        reduction: str = "mean",
+        ignore_index: int = -100,
+    ) -> None:
         super().__init__()
         _settings(reduction, ignore_index)
         if not isinstance(gamma, Real) or not math.isfinite(gamma) or gamma < 0:

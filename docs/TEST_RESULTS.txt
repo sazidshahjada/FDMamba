@@ -1,0 +1,75 @@
+test_custom_folder_order_and_input_errors (test_loaders.LoaderTests.test_custom_folder_order_and_input_errors) ... ok
+test_empty_split_fails_clearly (test_loaders.LoaderTests.test_empty_split_fails_clearly) ... ok
+test_eval_is_deterministic_and_keeps_final_batch (test_loaders.LoaderTests.test_eval_is_deterministic_and_keeps_final_batch) ... ok
+test_grid_denormalizes_saves_and_preserves_rng (test_loaders.LoaderTests.test_grid_denormalizes_saves_and_preserves_rng) ... ok
+test_rgb_shapes_fixed_grade_mapping_and_samplers (test_loaders.LoaderTests.test_rgb_shapes_fixed_grade_mapping_and_samplers) ... ok
+test_shuffle_seed_and_worker_loading (test_loaders.LoaderTests.test_shuffle_seed_and_worker_loading) ... ok
+test_train_statistics_match_pixels_and_normalization (test_loaders.LoaderTests.test_train_statistics_match_pixels_and_normalization) ... ok
+test_worker_loading (test_loaders.LoaderTests.test_worker_loading) ... skipped 'Worker IPC unavailable in this environment'
+test_balanced_equal_counts_match_plain_cross_entropy (test_losses.LossTests.test_balanced_equal_counts_match_plain_cross_entropy) ... ok
+test_balanced_weights_dataset_order_and_buffers (test_losses.LossTests.test_balanced_weights_dataset_order_and_buffers) ... ok
+test_cpu_autocast_and_optimizer_step_for_all_losses (test_losses.LossTests.test_cpu_autocast_and_optimizer_step_for_all_losses) ... ok
+test_cross_entropy_matches_pytorch_values_and_gradients (test_losses.LossTests.test_cross_entropy_matches_pytorch_values_and_gradients) ... ok
+test_cuda_amp_buffers_and_gradients (test_losses.LossTests.test_cuda_amp_buffers_and_gradients) ... skipped 'CUDA loss/AMP checks require a GPU'
+test_extreme_logits_and_fractional_gamma_have_finite_gradients (test_losses.LossTests.test_extreme_logits_and_fractional_gamma_have_finite_gradients) ... ok
+test_focal_gradcheck (test_losses.LossTests.test_focal_gradcheck) ... ok
+test_focal_matches_independent_softmax_formula (test_losses.LossTests.test_focal_matches_independent_softmax_formula) ... ok
+test_ignored_labels_and_zero_effective_batches (test_losses.LossTests.test_ignored_labels_and_zero_effective_batches) ... ok
+test_invalid_settings_and_input_shapes (test_losses.LossTests.test_invalid_settings_and_input_shapes) ... ok
+test_zero_gamma_matches_ce_and_alpha_is_linear (test_losses.LossTests.test_zero_gamma_matches_ce_and_alpha_is_linear) ... ok
+test_absent_classes_and_undefined_scores_are_explicit (test_metrics.MetricsTests.test_absent_classes_and_undefined_scores_are_explicit) ... ok
+test_classification_metrics_match_sklearn (test_metrics.MetricsTests.test_classification_metrics_match_sklearn) ... ok
+test_configuration_and_invalid_inputs (test_metrics.MetricsTests.test_configuration_and_invalid_inputs) ... ok
+test_cuda_logits_are_detached_to_cpu (test_metrics.MetricsTests.test_cuda_logits_are_detached_to_cpu) ... skipped 'CUDA tensor ingestion requires a GPU'
+test_custom_classes_binary_mode_and_extreme_logits (test_metrics.MetricsTests.test_custom_classes_binary_mode_and_extreme_logits) ... ok
+test_ignored_and_empty_batches (test_metrics.MetricsTests.test_ignored_and_empty_batches) ... ok
+test_logits_probabilities_and_epoch_accumulation_agree (test_metrics.MetricsTests.test_logits_probabilities_and_epoch_accumulation_agree) ... ok
+test_ordinal_distances_include_absent_intermediate_grades (test_metrics.MetricsTests.test_ordinal_distances_include_absent_intermediate_grades) ... ok
+test_referable_dr_uses_summed_probabilities (test_metrics.MetricsTests.test_referable_dr_uses_summed_probabilities) ... ok
+test_all_baselines_and_fdconv_variants_train_at_224 (test_models.ModelTests.test_all_baselines_and_fdconv_variants_train_at_224) ... ok
+test_all_mamba_and_hybrid_variants_cuda_with_amp (test_models.ModelTests.test_all_mamba_and_hybrid_variants_cuda_with_amp) ... skipped 'Real Mamba integration requires CUDA'
+test_fdconv_fallback_obeys_stride_eligibility (test_models.ModelTests.test_fdconv_fallback_obeys_stride_eligibility) ... ok
+test_fdconv_fft_shapes_and_single_kernel (test_models.ModelTests.test_fdconv_fft_shapes_and_single_kernel) ... ok
+test_fdconv_state_dict_round_trip (test_models.ModelTests.test_fdconv_state_dict_round_trip) ... ok
+test_fp32_wrapper_under_cpu_autocast (test_models.ModelTests.test_fp32_wrapper_under_cpu_autocast) ... ok
+test_frequency_masks_use_actual_fft_bins (test_models.ModelTests.test_frequency_masks_use_actual_fft_bins) ... ok
+test_hybrid_reuses_b2_fusion (test_models.ModelTests.test_hybrid_reuses_b2_fusion) ... ok
+test_imports_do_not_require_optional_mamba_or_mmcv (test_models.ModelTests.test_imports_do_not_require_optional_mamba_or_mmcv) ... ok
+test_ineligible_replacement_sites_are_rejected (test_models.ModelTests.test_ineligible_replacement_sites_are_rejected) ... ok
+test_invalid_fdconv_configurations_fail_early (test_models.ModelTests.test_invalid_fdconv_configurations_fail_early) ... ok
+test_mamba_fusion_cuda_shape_and_gradients (test_models.ModelTests.test_mamba_fusion_cuda_shape_and_gradients) ... skipped 'Real Mamba integration requires CUDA'
+test_spatial_and_spectral_parameterizations_agree (test_models.ModelTests.test_spatial_and_spectral_parameterizations_agree) ... ok
+test_deterministic_false_resets_prior_true_setting (test_revision.RevisionTests.test_deterministic_false_resets_prior_true_setting) ... ok
+test_factory_preserves_baseline_and_fdconv_initialization (test_revision.RevisionTests.test_factory_preserves_baseline_and_fdconv_initialization) ... ok
+test_factory_rejects_pretraining_and_ignored_options (test_revision.RevisionTests.test_factory_rejects_pretraining_and_ignored_options) ... ok
+test_fully_frozen_model_evaluates_without_dummy_parameters (test_revision.RevisionTests.test_fully_frozen_model_evaluates_without_dummy_parameters) ... ok
+test_resume_requires_run_directory_and_historical_best (test_revision.RevisionTests.test_resume_requires_run_directory_and_historical_best) ... ok
+test_training_and_frozen_evaluation_without_training_files (test_revision.RevisionTests.test_training_and_frozen_evaluation_without_training_files) ... ok
+test_validation_normalization_is_checked_before_training (test_revision.RevisionTests.test_validation_normalization_is_checked_before_training) ... ok
+test_accumulation_matches_full_weighted_batch_and_loss_reductions (test_trainer.TrainerTests.test_accumulation_matches_full_weighted_batch_and_loss_reductions) ... ok
+test_all_baseline_and_fdconv_models_with_and_without_dense_wrapper (test_trainer.TrainerTests.test_all_baseline_and_fdconv_models_with_and_without_dense_wrapper) ... ok
+test_bad_loaders_and_nonfinite_losses_are_rejected (test_trainer.TrainerTests.test_bad_loaders_and_nonfinite_losses_are_rejected) ... ok
+test_callbacks_early_stopping_and_undefined_monitor (test_trainer.TrainerTests.test_callbacks_early_stopping_and_undefined_monitor) ... ok
+test_cuda_amp_checkpoint_resume (test_trainer.TrainerTests.test_cuda_amp_checkpoint_resume) ... skipped 'CUDA AMP training requires CUDA'
+test_epoch_resume_matches_uninterrupted_training_with_all_rngs (test_trainer.TrainerTests.test_epoch_resume_matches_uninterrupted_training_with_all_rngs) ... ok
+test_fit_artifacts_best_last_and_test_isolation (test_trainer.TrainerTests.test_fit_artifacts_best_last_and_test_isolation) ... ok
+test_frozen_eval_only_model_and_saved_normalization_guard (test_trainer.TrainerTests.test_frozen_eval_only_model_and_saved_normalization_guard) ... ok
+test_mamba_and_hybrid_training_and_evaluation (test_trainer.TrainerTests.test_mamba_and_hybrid_training_and_evaluation) ... skipped 'Real Mamba training requires CUDA'
+test_optimizer_scheduler_instances_hooks_and_cpu_amp (test_trainer.TrainerTests.test_optimizer_scheduler_instances_hooks_and_cpu_amp) ... ok
+test_overwrite_resume_mismatch_and_eval_state_restoration_on_error (test_trainer.TrainerTests.test_overwrite_resume_mismatch_and_eval_state_restoration_on_error) ... ok
+test_step_scheduler_and_warmup_cosine_factory (test_trainer.TrainerTests.test_step_scheduler_and_warmup_cosine_factory) ... /root/.local/lib/python3.12/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+ok
+test_weighted_validation_loss_is_independent_of_batch_partition (test_trainer.TrainerTests.test_weighted_validation_loss_is_independent_of_batch_partition) ... ok
+test_activation_options_normalization_bias_and_backbone_options (test_wrapper.WrapperTests.test_activation_options_normalization_bias_and_backbone_options) ... ok
+test_baseline_and_fdconv_classes_keep_all_retained_parameters_in_use (test_wrapper.WrapperTests.test_baseline_and_fdconv_classes_keep_all_retained_parameters_in_use) ... ok
+test_invalid_head_settings (test_wrapper.WrapperTests.test_invalid_head_settings) ... ok
+test_linear_head_and_nondefault_class_count (test_wrapper.WrapperTests.test_linear_head_and_nondefault_class_count) ... ok
+test_mamba_and_hybrid_classes_with_custom_head (test_wrapper.WrapperTests.test_mamba_and_hybrid_classes_with_custom_head) ... skipped 'Real Mamba wrapper integration requires CUDA'
+
+----------------------------------------------------------------------
+Ran 66 tests in 18.384s
+
+OK (skipped=8)
+Model: {'backbone': 'mobilenetv3', 'variant': 'B1', 'num_classes': 5, 'pretrained': False, 'fdconv': {'layer_path': 'blocks.2.2.conv_pwl'}, 'mamba': {}}
+Training class counts: {'0': 2, '1': 2, '2': 2, '3': 2, '4': 2}

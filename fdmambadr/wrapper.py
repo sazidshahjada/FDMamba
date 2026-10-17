@@ -17,6 +17,7 @@ Example::
         backbone_kwargs={"kernel_num": 4},
     )
 """
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -75,8 +76,10 @@ class BackboneWrapper(nn.Module):
         if not isinstance(num_classes, int) or isinstance(num_classes, bool) or num_classes <= 0:
             raise ValueError("num_classes must be a positive integer")
         hidden_dims = tuple(hidden_dims)
-        if any(not isinstance(width, int) or isinstance(width, bool) or width <= 0
-               for width in hidden_dims):
+        if any(
+            not isinstance(width, int) or isinstance(width, bool) or width <= 0
+            for width in hidden_dims
+        ):
             raise ValueError("hidden_dims must contain positive integer widths")
         if isinstance(dropout, Real):
             probabilities = (float(dropout),) * len(hidden_dims)
@@ -101,8 +104,10 @@ class BackboneWrapper(nn.Module):
         activation_options = dict(activation_kwargs or {})
 
         self.backbone = backbone_class(name=name, num_classes=num_classes, **options)
-        if not all(callable(getattr(self.backbone, method, None))
-                   for method in ("forward_features", "forward_head")):
+        if not all(
+            callable(getattr(self.backbone, method, None))
+            for method in ("forward_features", "forward_head")
+        ):
             raise TypeError("The backbone must implement forward_features and forward_head")
         self.num_features = self.backbone.num_features
         self.num_classes = num_classes
@@ -110,9 +115,15 @@ class BackboneWrapper(nn.Module):
         # All four project wrappers contain one timm model, at differing depths.
         # Keep it registered only through self.backbone to avoid duplicate state
         # entries. Its classifier's width includes MobileNet's conv_head output.
-        native = next((module for module in self.backbone.modules()
-                       if callable(getattr(module, "get_classifier", None))
-                       and callable(getattr(module, "reset_classifier", None))), None)
+        native = next(
+            (
+                module
+                for module in self.backbone.modules()
+                if callable(getattr(module, "get_classifier", None))
+                and callable(getattr(module, "reset_classifier", None))
+            ),
+            None,
+        )
         if native is None or not isinstance(native.get_classifier(), nn.Linear):
             raise TypeError("Expected a project backbone containing a timm linear classifier")
         self.embedding_dim = native.get_classifier().in_features
@@ -134,11 +145,16 @@ class BackboneWrapper(nn.Module):
         self.head = nn.Sequential(OrderedDict(layers))
         self.config = dict(
             backbone_class=f"{backbone_class.__module__}.{backbone_class.__qualname__}",
-            name=name, num_classes=num_classes, backbone_kwargs=options,
-            hidden_dims=list(hidden_dims), dropout=list(probabilities),
+            name=name,
+            num_classes=num_classes,
+            backbone_kwargs=options,
+            hidden_dims=list(hidden_dims),
+            dropout=list(probabilities),
             activation=f"{activation.__module__}.{activation.__qualname__}",
-            activation_kwargs=activation_options, normalization=normalization,
-            bias=bias, embedding_dim=self.embedding_dim,
+            activation_kwargs=activation_options,
+            normalization=normalization,
+            bias=bias,
+            embedding_dim=self.embedding_dim,
         )
 
     def forward_features(self, x: Tensor) -> Tensor:

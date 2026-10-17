@@ -78,6 +78,7 @@ datasets/
 *.weights
 checkpoints/
 weights/
+saved_weights/
 pretrained/
 
 # Runtime experiment artifacts (source scripts/configurations should stay tracked)

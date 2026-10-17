@@ -1,222 +1,161 @@
 # FD-MambaDR
-FD-MambaDR: Frequency-Dynamic Convolution and State-Space Feature Modeling for Efficient Diabetic Retinopathy Grading
 
-Read [project_overview.md](project_overview.md) for the research protocol and
-[docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the code review,
-verified behavior, and remaining work. All classifiers use random initialization.
+Scratch-trained, five-class diabetic retinopathy classification with three CNN
+backbones and four controlled model variants. Start with
+[project_overview.md](project_overview.md) for the research protocol and
+[the review](docs/IMPLEMENTATION_STATUS.md) for verified behavior and limitations.
 
-## Environment
+## Setup
 
-The full GPU environment targets **Linux x86_64** (including WSL2), **Python 3.11**,
-**PyTorch 2.5.1 / torchvision 0.20.1**, and **CUDA 12.4**. It requires an NVIDIA
-GPU and a compatible installed driver. PyTorch's version pair follows its
-[official installation matrix](https://pytorch.org/get-started/previous-versions/#v251).
+For the supplied Linux/NVIDIA environment:
 
 ```bash
 conda env create -f environment.yml
-conda activate fd-mambadr
+conda activate fdmambadr
 python -m pip check
-python -c "import torch; assert torch.cuda.is_available(), 'CUDA unavailable'; import selective_scan_cuda, causal_conv1d_cuda; print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name())"
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 python -m unittest discover -s tests -v
 ```
 
-The YAML includes data/image processing, metrics, plots, TensorBoard, and system
-monitoring dependencies. It uses official prebuilt
-[Mamba 2.2.4](https://github.com/state-spaces/mamba/releases/tag/v2.2.4) and
-[causal-conv1d 1.5.4](https://github.com/Dao-AILab/causal-conv1d/releases/tag/v1.5.4)
-wheels matched to CPython 3.11, PyTorch 2.5, CUDA 12, and the Conda PyTorch C++ ABI.
-These are platform-specific binaries; changing Python/PyTorch/platform requires
-matching replacement wheels or source builds using the installed PyTorch with
-`--no-build-isolation`. A local CUDA compiler is unnecessary for these wheels.
-MMCV is unnecessary for this standalone FDConv implementation.
+The environment retains the supplied Python 3.11 / PyTorch 2.5.1 / CUDA 12.4
+configuration and platform-specific Mamba wheels. Verify it on your GPU machine;
+this revision ran on CPU. For B0/B1-only work, install a matching PyTorch 2.5.1 /
+torchvision 0.20.1 wheel pair for your device, then `pip install -r requirements.txt`.
+B2/B3 require real `mamba_ssm` and `causal_conv1d` CUDA extensions; there is no
+surrogate fallback. MMCV is not required by the supplied FDConv file.
 
-On a CPU machine, B0/B1 can run with compatible `torch`, `torchvision`, and `timm`.
-The test suite explicitly skips real Mamba execution when CUDA is unavailable.
-B2/B3 require the actual Mamba CUDA kernels; they have no substitute implementation.
+## Train and evaluate
 
-## Models
+Keep the publisher's existing splits. Each split directory contains verified
+class folders `0`, `1`, `2`, `3`, `4`, with images inside. Missing classes in
+validation/test keep their original label indices. Weighted training requires
+all five classes to be present.
 
-| Variant | Constructor | Components |
-|---|---|---|
-| B0 | `fdmambadr.backbone.Backbone` | CNN |
-| B1 | `fdmambadr.fdconv_models.FDConvBackbone` | CNN with one FDConv replacement |
-| B2 | `fdmambadr.mamba_models.MambaBackbone` | CNN and local/global Mamba fusion |
-| B3 | `fdmambadr.hybrid_models.HybridBackbone` | B1 and the same fusion block as B2 |
+1. Edit paths, model variant, batch size and run directory in `configs/train.yaml`.
+2. Train, select the checkpoint using validation QWK, and evaluate the test set:
 
-Each supports `mobilenetv3`, `efficientnet_b0`, and `resnet50` and produces five
-raw logits by default. Shared aliases are resolved by the baseline factory.
-
-```python
-import torch
-from fdmambadr.hybrid_models import HybridBackbone
-
-model = HybridBackbone("mobilenetv3", num_classes=5, hidden_dim=64).cuda()
-logits = model(torch.randn(1, 3, 224, 224, device="cuda"))
-print(logits.shape)  # torch.Size([1, 5])
-print(model.config)  # Save this with the experiment/checkpoint.
+```bash
+python train.py --config configs/train.yaml
+python train.py --config configs/train.yaml --resume
 ```
 
-To customize the dense classifier, pass a **backbone class** to `BackboneWrapper`:
+Training and evaluation print the selected device (including the GPU name on CUDA),
+full model name, parameter counts, image size, class order, and each available
+split's sample/batch counts, per-class counts, paths, batch size and worker count.
+Each epoch shows training/validation progress bars with running loss, followed by
+validation accuracy, macro-F1 and QWK. If `data.test_path` is configured, training
+ends with test evaluation using `best.pt`, printing test loss, accuracy and macro-F1.
 
-```python
-from torch import nn
-from fdmambadr.fdconv_models import FDConvBackbone
-from fdmambadr.wrapper import BackboneWrapper
+3. Optionally evaluate the fixed checkpoint separately or on external data:
 
-model = BackboneWrapper(
-    FDConvBackbone,
-    name="mobilenetv3",
-    num_classes=5,
-    hidden_dims=(512, 128),
-    dropout=(0.3, 0.1),
-    activation=nn.GELU,
-    normalization="layernorm",
-    backbone_kwargs={"kernel_num": 4},
-)
+```bash
+python evaluate.py --checkpoint experiments/MNV3_B0_seed42/best.pt --data data/test --split test
+python evaluate.py --checkpoint experiments/MNV3_B0_seed42/best.pt --data data/idrid --split idrid
 ```
 
-The same interface accepts `Backbone`, `MambaBackbone`, and `HybridBackbone`.
-`hidden_dims=()` selects a single output linear layer; dropout can be one scalar
-or a probability per hidden layer. Activation options go in `activation_kwargs`;
-normalization accepts `None`, `"layernorm"`, or `"batchnorm"`. Dense BatchNorm
-requires batches larger than one during training. Other backbone options, such
-as Mamba's `hidden_dim`, go in `backbone_kwargs`.
+Use a separate run directory for every backbone/variant/seed. `--resume` continues
+`last.pt` in that directory; move/copy the entire directory when relocating a
+run. Keep the original total-epoch schedule on resume. The test split is evaluated
+only after the training loop. External class folders must reflect a verified
+five-grade mapping.
 
-The wrapper removes the original output classifier and keeps the native pooling
-and projection, including MobileNet's 960-to-1280 channel projection. It returns
-raw logits and records dense-head settings in `model.config`. Save these along
-with the underlying backbone's resolved FDConv metadata when applicable, and
-use identical dense heads across compared variants.
+The default recipe uses training-label inverse-frequency cross-entropy, AdamW,
+warm-up/cosine scheduling, and validation-QWK early stopping. Exact QWK ties keep
+the earlier checkpoint. Undefined QWK is recorded explicitly and cannot create
+`best.pt`; automatic test evaluation uses `last.pt` if no validation optimum was
+defined. Focal loss and unweighted CE remain available for deliberate ablations.
 
-Keep model parameters in FP32 and use `torch.autocast`/`torch.amp.GradScaler` for
-mixed precision. The FDConv wrapper runs its FFT and dynamic convolution in FP32.
-The tests include real CUDA forward/backward, AMP, and optimizer checks for B2/B3
-when a GPU is present; CPU tests cannot verify those paths.
+Images are RGB in `[0,1]` unless training-fitted mean/std are supplied. Normalization
+is never fitted during evaluation. Additional online augmentation defaults to
+**off in the supplied config**, because the current collection includes offline
+augmentation. The existing loader API retains its original `augment=True` default.
+Keep normalization, resolution, loss and head settings matched across comparisons.
 
-## ImageFolder data loading
-
-Supply the existing split directories; each contains class folders `0` to `4`.
+Runs save `config.yaml`, `metadata.json`, `dataset_fingerprints.json`,
+`history.csv/json`, `best.pt`, `last.pt`, and evaluation metrics/prediction CSVs.
+When training finishes, including early stopping, both the validation-selected best
+checkpoint (if defined) and the final checkpoint are also exported to
+`training.saved_weights_dir` (default `saved_weights`). Filenames include the full
+backbone, variant/method, run directory name, seed, epoch and `best`/`last`, for example:
 
 ```text
-train/0/*.jpg   train/1/*.jpg   ... train/4/*.jpg
-val/0/*.jpg     val/1/*.jpg     ... val/4/*.jpg
-test/0/*.jpg    test/1/*.jpg    ... test/4/*.jpg
+saved_weights/mobilenetv3_large_100_B0_Baseline_MNV3_B0_seed42_seed42_epoch0007_best.pt
+saved_weights/mobilenetv3_large_100_B0_Baseline_MNV3_B0_seed42_seed42_epoch0022_last.pt
 ```
 
-```python
-from utils.loaders import create_dataloaders, visualize_images
+The files retain weights, class names, model construction and preprocessing settings,
+so pass either full path to `evaluate.py --checkpoint` for later testing or labeled
+batch inference. Exports happen before automatic test evaluation, so a test failure
+does not prevent saving trained models. Set `training.saved_weights_dir: null` to
+disable these extra copies; Python callers can inspect `trainer.saved_weights`.
 
-loaders = create_dataloaders(
-    train_path="/path/to/train",
-    val_path="/path/to/val",
-    test_path="/path/to/test",
-    image_size=224,
-    batch_size=32,
-    num_workers=4,  # Use 0 for a simple notebook/debugging setup.
-    augment=False,  # The current combined dataset already has offline augmentation.
+The evaluation command restores architecture and preprocessing from the checkpoint
+without accessing training files. Only load trusted local training checkpoints:
+they contain Python/NumPy RNG state and use PyTorch's full checkpoint loader.
+Pass `--quiet` to `evaluate.py` to print only the final JSON report.
+
+## Python interface
+
+```python
+from fdmambadr import build_model
+from utils.runtime import seed_everything
+
+seed_everything(42)  # Before constructing a model.
+model = build_model(
+    backbone="mobilenetv3", variant="B3", fdconv={"kernel_num": 4}, mamba={"hidden_dim": 64}
 )
-images, labels = next(iter(loaders["train"]))
-print(loaders["train"].dataset.class_to_idx)
-print(loaders["train"].dataset.class_counts)
-figure, axes = visualize_images(loaders, rows=3, cols=4, split="train")
+print(model.build_config)  # Includes the resolved FDConv path.
 ```
 
-Only training is shuffled. `augment=True` adds mild training-only flips, rotation
-and color changes. Validation/test transforms are deterministic and retain every
-sample, including the last incomplete batch. Missing split classes retain their
-original labels; unexpected class folders fail. For other folder names, pass
-`class_names` in the verified severity order.
+| Variant | Existing constructor | Method |
+|---|---|---|
+| B0 | `Backbone` | Native CNN and native classifier |
+| B1 | `FDConvBackbone` | One eligible backbone convolution replaced by FDConv |
+| B2 | `MambaBackbone` | CNN plus local/global Mamba fusion |
+| B3 | `HybridBackbone` | B1 plus exactly the B2 fusion block |
 
-Images are decoded as RGB float32 tensors. Defaults use pixel values in `[0, 1]`.
-For normalization, fit once with
-`mean, std = compute_train_mean_std(train_path, image_size=224)` (import from
-`utils.loaders`), then pass `mean=mean, std=std` to `create_dataloaders` and save
-them with the run. This reads the entire training folder once; it never fits
-validation/test statistics. The grid function reverses normalization for display
-and can save a figure with `save_path="outputs/grid.png", show=False`.
-
-## Loss functions
-
-All three losses in `utils/losses.py` accept raw logits `[batch, classes]` and
-`torch.long` labels `[batch]`. They support `reduction="none"`, `"mean"`, or
-`"sum"`, plus `ignore_index`. Mean reduction returns differentiable zero for an
-empty/all-ignored batch. Half/bfloat16 logits use FP32 loss arithmetic.
+All variants support `mobilenetv3`, `efficientnet_b0`, and `resnet50`. Existing
+constructors and imports remain available. `build_model` uses the native head;
+the optional `BackboneWrapper` retains its configurable dense-head API:
 
 ```python
-from utils.losses import CrossEntropy, BalancedCrossEntropy, FocalLoss
+from fdmambadr.backbone import Backbone
+from fdmambadr.wrapper import BackboneWrapper
 
-ce = CrossEntropy(label_smoothing=0.0)
-balanced_ce = BalancedCrossEntropy.from_dataset(loaders["train"].dataset)
-focal = FocalLoss(gamma=2.0, alpha=balanced_ce.weight)
-
-loss = balanced_ce(logits, labels)
-loss.backward()
+model = BackboneWrapper(Backbone, name="mobilenetv3", hidden_dims=(256,), dropout=0.2)
 ```
 
-`BalancedCrossEntropy` uses fixed weights `N / (C * class_count)` from the
-**training split only**. You can also supply a count vector ordered by label
-index, e.g. `BalancedCrossEntropy([55162, 18470, 24198, 7936, 9475])`. Zero-count
-training classes fail explicitly. Counts/weights are buffers and are checkpointed
-in `state_dict`; use the same weight policy across compared models.
+For custom heads or datasets, use `Trainer` directly. The command-line evaluator
+supports native-head checkpoints created with `build_model` and saved preprocessing;
+custom architectures use their original constructor plus `Trainer.evaluate`.
+`Trainer.fit()` returns the epoch history and stores automatic test results in
+`trainer.test_report`. Pass `fit(evaluate_test=False)` to defer test evaluation;
+set `verbose=False` when constructing the trainer to hide progress and summaries.
+See [architecture and extension guide](docs/ARCHITECTURE.md).
 
-`CrossEntropy` supports optional `weight` and `label_smoothing`, following
-[PyTorch's cross-entropy definition](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html).
-Its weighted mean divides by the sum of target-class weights. The multiclass
-`FocalLoss` uses `-alpha_t * (1 - p_t)**gamma * log(p_t)`, adapting the
-[focal-loss definition](https://arxiv.org/abs/1708.02002) to softmax classification.
-`alpha` can be omitted, a uniform scalar, or a weight vector. Focal mean averages
-over nonignored samples; alpha weights affect its numerator. With `gamma=0` and
-no alpha, it equals plain cross-entropy. Record the chosen loss, reduction,
-weights/counts, smoothing and focal settings in each run configuration.
+## Code map
 
-## Classification metrics
+| Location | Responsibility |
+|---|---|
+| `fdmambadr/factory.py` | One variant-selection interface |
+| `fdmambadr/backbone.py` | Native timm backbone construction |
+| `fdmambadr/fdconv_models.py` | Selective adapter and FP32 execution wrapper |
+| `fdmambadr/FDConv.py` | Protected supplied implementation; unchanged |
+| `fdmambadr/mamba_fusion.py` | Shared local/Mamba/gate/residual block |
+| `fdmambadr/fusion_backbone.py` | Shared B2/B3 forward interface |
+| `utils/loaders.py`, `visualization.py` | Data loading and optional image grids |
+| `utils/losses.py`, `metrics.py` | Losses and whole-split measurements |
+| `utils/engine.py` | Batch processing, accumulation and optimizer updates |
+| `utils/trainer.py` | Run lifecycle, checkpoints, selection and evaluation |
+| `utils/runtime.py`, `data_checks.py` | Seeding, scheduling, identities and validation |
+| `train.py`, `evaluate.py`, `configs/train.yaml` | Minimal executable workflow |
 
-`utils/metrics.py` provides a complete-split helper and an epoch accumulator:
+Keep weights in FP32; use autocast for AMP, not `model.half()` for FDConv. GPU AMP
+and real Mamba execution remain pending. Exact epoch-resume replay is tested with
+`num_workers=0`; persistent worker RNG states are not checkpointed.
 
-```python
-from utils.metrics import ClassificationMetrics, compute_metrics
-
-# One call when predictions for the entire split are available:
-report = compute_metrics(logits, labels)
-
-# Or accumulate one update per batch and compute once at the end of the split:
-meter = ClassificationMetrics(num_classes=5)
-meter.update(logits, labels)  # Repeat for each batch.
-report = meter.compute()
-print(report["qwk"], report["macro_f1"], report["balanced_accuracy"])
-meter.reset()  # Before the next epoch/split.
-```
-
-Inputs can be PyTorch tensors (including CUDA outputs) or NumPy arrays/lists.
-Predictions are the **first** argument, matching the loss API. By default `[N,C]`
-inputs are logits; use `from_logits=False` for probabilities. `[N]` integer
-predictions are also supported. Targets are integer labels in the configured
-class order; `ignore_index=-100` is excluded by default. GPU inputs are detached
-and stored on CPU. Do not average QWK/F1 from separate minibatch reports.
-
-The report contains accuracy, balanced accuracy, macro precision/recall/F1,
-quadratic weighted kappa (`qwk`), per-grade precision/recall/F1/support, and the
-fixed-size confusion matrix (true labels in rows, predictions in columns).
-Macro scores include all configured classes with undefined per-class ratios set
-to zero; balanced accuracy averages recall over represented true classes.
-These conventions follow [scikit-learn's metrics](https://scikit-learn.org/stable/modules/model_evaluation.html#classification-metrics).
-
-`referable_dr` reports sensitivity, specificity, ROC-AUC, support and a binary
-confusion matrix for true grade `>=2`. With probability/logit inputs, it uses the
-sum of grades 2–4 probabilities and a fixed threshold of 0.5. With hard-grade
-inputs, the decision is predicted grade `>=2` and AUC is unavailable. Configure
-the grade boundary/threshold before evaluating; use `referable_grade=None` to
-disable this exploratory endpoint. No thresholds are fitted automatically.
-
-Undefined QWK, AUC or binary rates return `None`, with an explanation in
-`undefined_metrics`. An empty/all-ignored split raises an error. Handle undefined
-QWK explicitly before selecting a checkpoint. Reports can be serialized with
-`json.dump(report, file, allow_nan=False)`. For prediction exports,
-`meter.get_predictions()` returns copies of target/predicted labels and class
-probabilities as NumPy arrays in update order.
-
-The repository implements models, ImageFolder loading/visualization, losses,
-classification metrics, and regression tests. Manifest generation, training/resume,
-QWK checkpoint selection, and evaluation/export scripts remain to be implemented.
-The environment supplies their dependencies; it does not constitute a completed
-training/evaluation pipeline.
+These remain preliminary experiments under publisher-provided splits. The archive
+contains no real dataset or trained results. CSV dataset adapters, comprehensive
+duplicate/patient audits, experiment-suite orchestration, benchmarks and report
+plots remain future work. See the review for details; no accuracy or generalization
+improvement is claimed.

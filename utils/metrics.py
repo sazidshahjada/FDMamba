@@ -3,6 +3,7 @@
 Predictions are the FIRST argument, matching the loss API. Undefined QWK/AUC or
 binary rates are reported as None with reasons; no NaN is written to reports.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -54,21 +55,36 @@ class ClassificationMetrics:
     Set referable_grade=None to disable the binary endpoint.
     """
 
-    def __init__(self, num_classes: int = 5, *, from_logits: bool = True,
-                 class_names: Sequence[str] | None = None, ignore_index: int | None = -100,
-                 referable_grade: int | None = 2, referable_threshold: float = 0.5) -> None:
+    def __init__(
+        self,
+        num_classes: int = 5,
+        *,
+        from_logits: bool = True,
+        class_names: Sequence[str] | None = None,
+        ignore_index: int | None = -100,
+        referable_grade: int | None = 2,
+        referable_threshold: float = 0.5,
+    ) -> None:
         if not isinstance(num_classes, int) or isinstance(num_classes, bool) or num_classes < 2:
             raise ValueError("num_classes must be an integer >= 2")
         if not isinstance(from_logits, bool):
             raise TypeError("from_logits must be a bool")
-        names = tuple(str(i) for i in range(num_classes)) if class_names is None else tuple(class_names)
-        if (len(names) != num_classes or any(not isinstance(name, str) or not name for name in names)
-                or len(set(names)) != num_classes):
+        names = (
+            tuple(str(i) for i in range(num_classes)) if class_names is None else tuple(class_names)
+        )
+        if (
+            len(names) != num_classes
+            or any(not isinstance(name, str) or not name for name in names)
+            or len(set(names)) != num_classes
+        ):
             raise ValueError("class_names must contain one unique name per class, in label order")
-        if ignore_index is not None and (not isinstance(ignore_index, int) or isinstance(ignore_index, bool)):
+        if ignore_index is not None and (
+            not isinstance(ignore_index, int) or isinstance(ignore_index, bool)
+        ):
             raise TypeError("ignore_index must be an integer or None")
         if referable_grade is not None and (
-            not isinstance(referable_grade, int) or isinstance(referable_grade, bool)
+            not isinstance(referable_grade, int)
+            or isinstance(referable_grade, bool)
             or not 1 <= referable_grade < num_classes
         ):
             raise ValueError("referable_grade must be between 1 and num_classes-1, or None")
@@ -100,7 +116,11 @@ class ClassificationMetrics:
         has_probabilities = predictions.ndim == 2
         if has_probabilities and predictions.shape[1] != self.num_classes:
             raise ValueError("Prediction columns must match num_classes")
-        valid = np.ones(len(targets), dtype=bool) if self.ignore_index is None else targets != self.ignore_index
+        valid = (
+            np.ones(len(targets), dtype=bool)
+            if self.ignore_index is None
+            else targets != self.ignore_index
+        )
         targets = _labels(targets[valid], "targets", self.num_classes)
         predictions = predictions[valid]
         probabilities = None
@@ -113,13 +133,16 @@ class ClassificationMetrics:
             if self.from_logits:
                 # Subtract the maximum before exponentiating. A negative
                 # overflow for extreme finite float64 logits correctly gives 0.
-                with np.errstate(over='ignore', under='ignore'):
+                with np.errstate(over="ignore", under="ignore"):
                     scores = np.exp(predictions - predictions.max(axis=1, keepdims=True))
                 probabilities = scores / scores.sum(axis=1, keepdims=True)
             else:
                 sums = predictions.sum(axis=1, keepdims=True)
-                if (np.any(predictions < 0) or np.any(predictions > 1)
-                        or not np.allclose(sums, 1, rtol=1e-5, atol=1e-6)):
+                if (
+                    np.any(predictions < 0)
+                    or np.any(predictions > 1)
+                    or not np.allclose(sums, 1, rtol=1e-5, atol=1e-6)
+                ):
                     raise ValueError("Probability rows must be nonnegative and sum to one")
                 probabilities = predictions / sums
             predictions = probabilities.argmax(axis=1)
@@ -142,7 +165,9 @@ class ClassificationMetrics:
         return {
             "targets": np.concatenate(self._targets),
             "predictions": np.concatenate(self._predictions),
-            "probabilities": np.concatenate(self._probabilities) if self._has_probabilities else None,
+            "probabilities": np.concatenate(self._probabilities)
+            if self._has_probabilities
+            else None,
         }
 
     def compute(self) -> dict:
@@ -152,7 +177,10 @@ class ClassificationMetrics:
         labels = np.arange(self.num_classes)
         matrix = confusion_matrix(targets, predictions, labels=labels)
         precision, recall, f1, support = precision_recall_fscore_support(
-            targets, predictions, labels=labels, zero_division=0,
+            targets,
+            predictions,
+            labels=labels,
+            zero_division=0,
         )
         undefined = {}
         n = int(len(targets))
@@ -163,7 +191,9 @@ class ClassificationMetrics:
         denominator = float((distances * expected).sum())
         if denominator == 0:
             qwk = None
-            undefined["qwk"] = "Expected weighted disagreement is zero (degenerate grade distribution)"
+            undefined["qwk"] = (
+                "Expected weighted disagreement is zero (degenerate grade distribution)"
+            )
         else:
             qwk = float(1 - (distances * matrix).sum() / denominator)
         report = {
@@ -178,14 +208,22 @@ class ClassificationMetrics:
             "qwk": qwk,
             "confusion_matrix": matrix.tolist(),
             "per_class": [
-                {"label": i, "name": self.class_names[i], "precision": float(precision[i]),
-                 "recall": float(recall[i]), "f1": float(f1[i]), "support": int(support[i])}
+                {
+                    "label": i,
+                    "name": self.class_names[i],
+                    "precision": float(precision[i]),
+                    "recall": float(recall[i]),
+                    "f1": float(f1[i]),
+                    "support": int(support[i]),
+                }
                 for i in range(self.num_classes)
             ],
             "undefined_metrics": undefined,
         }
         if self.referable_grade is not None:
-            report["referable_dr"] = self._referable(targets, predictions, data["probabilities"], undefined)
+            report["referable_dr"] = self._referable(
+                targets, predictions, data["probabilities"], undefined
+            )
         return report
 
     def _referable(self, targets, predictions, probabilities, undefined) -> dict:
@@ -194,7 +232,7 @@ class ClassificationMetrics:
             scores = None
             predicted = (predictions >= self.referable_grade).astype(np.int64)
         else:
-            scores = probabilities[:, self.referable_grade:].sum(axis=1)
+            scores = probabilities[:, self.referable_grade :].sum(axis=1)
             predicted = (scores >= self.referable_threshold).astype(np.int64)
         matrix = confusion_matrix(true, predicted, labels=[0, 1])
         tn, fp, fn, tp = (int(value) for value in matrix.ravel())
@@ -216,9 +254,12 @@ class ClassificationMetrics:
             "grade_boundary": self.referable_grade,
             "threshold": self.referable_threshold if scores is not None else None,
             "decision_rule": "summed_probability" if scores is not None else "predicted_grade",
-            "sensitivity": sensitivity, "specificity": specificity, "roc_auc": auc,
+            "sensitivity": sensitivity,
+            "specificity": specificity,
+            "roc_auc": auc,
             "confusion_matrix": matrix.tolist(),
-            "positive_support": tp + fn, "negative_support": tn + fp,
+            "positive_support": tp + fn,
+            "negative_support": tn + fp,
         }
 
 
