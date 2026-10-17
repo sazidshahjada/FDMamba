@@ -1,0 +1,34 @@
+# Linux x86_64 / WSL2, Python 3.11, NVIDIA CUDA 12.x runtime.
+# Create: conda env create -f environment.yml
+# Activate: conda activate fd-mambadr
+# Official extension wheels below match torch 2.5, CPython 3.11 and ABI=FALSE.
+# Direct wheels avoid build isolation compiling against a different torch.
+name: fdmambadr
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip>=24.3,<26
+  - pytorch=2.5.1
+  - torchvision=0.20.1
+  - pytorch-cuda=12.4
+  - numpy=1.26.4
+  - scipy=1.14.1
+  - pandas=2.2.3
+  - scikit-learn=1.5.2
+  - pillow=11.0.0
+  - matplotlib=3.9.2
+  - seaborn=0.13.2
+  - pyyaml=6.0.2
+  - tqdm=4.67.1
+  - psutil=6.1.0
+  - tensorboard=2.18.0
+  - pip:
+      - timm==0.9.16
+      - einops==0.8.0
+      - transformers==4.46.3
+      - https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.4/causal_conv1d-1.5.4%2Bcu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+      - https://github.com/state-spaces/mamba/releases/download/v2.2.4/mamba_ssm-2.2.4%2Bcu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
