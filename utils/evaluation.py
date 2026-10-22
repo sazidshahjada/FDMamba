@@ -13,7 +13,7 @@ from .runtime import select_device, write_csv, write_json
 
 
 def load_model(checkpoint, *, device="auto", model=None):
-    """Reconstruct a trusted FDMamba training checkpoint with strict weight loading."""
+    """Reconstruct a trusted training checkpoint or exported weights with strict loading."""
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     if state.get("format_version") != 2:
         raise ValueError("Use a checkpoint created by this repository's current train.py")

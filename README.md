@@ -4,6 +4,10 @@ Medical image classification with MobileNetV3-Large, EfficientNet-B0 and ResNet-
 All models train from scratch. The CNN, FDConv and Mamba computations are preserved;
 the final classifier size comes from the chosen dataset.
 
+For all **48 runs in baseline → FDConv → Mamba → hybrid order**, follow the
+[step-by-step training guide](TRAINING_GUIDE.md). It lists every command for all
+three backbones and four datasets, plus resume, inference and benchmarking.
+
 ## Setup
 
 For the supplied Python 3.11 / PyTorch 2.5.1 / CUDA 12.4 environment:
@@ -113,6 +117,21 @@ epoch budget and settings; keep `best.pt` alongside `last.pt`. A fresh run refus
 to overwrite an existing experiment. Exact replay is tested with `num_workers: 0`.
 For a one-epoch smoke test, set `epochs: 1`, `warmup_epochs: 0` and choose B0/B1.
 
+After completion or early stopping, training also exports the validation-selected
+model to `saved_weight/` (set `training.weights_dir` to change this):
+
+```text
+saved_weight/FDMamba-MobileNetV3-B3_pathmnist_size28_input224_seed42.pt
+```
+
+Names include the model, variant, dataset, resolution and seed. A custom `--name`
+is added after the dataset. Exports contain weights, class names and preprocessing
+for direct inference/benchmark use; resumable training state stays in the experiment
+directory. A fresh run refuses to overwrite an existing export. Run the same
+training command with `--resume` on a completed experiment to regenerate its export
+without additional training. If the validation monitor is always undefined, the
+last checkpoint is exported.
+
 **TensorBoard is enabled for every run**, including resumed runs. It logs training,
 validation and test scalars, learning rate, configuration and metadata:
 
@@ -125,7 +144,7 @@ tensorboard --logdir experiments
 ```bash
 python inference.py \
   --model FDMamba-MobileNetV3-B3 \
-  --checkpoint experiments/pathmnist/FDMamba-MobileNetV3-B3/size28_input224_seed42/best.pt \
+  --checkpoint saved_weight/FDMamba-MobileNetV3-B3_pathmnist_size28_input224_seed42.pt \
   --image /path/to/image.png \
   --top-k 3 --output results/prediction.json
 ```
@@ -170,6 +189,7 @@ No training is performed by the benchmark command.
 FDMamba/       Core CNN wrappers, selective FDConv and Mamba fusion
 utils/         Data, config, epoch loop, training, metrics and evaluation helpers
 configs/       Three training recipes and one checkpoint comparison example
+saved_weight/  Named inference exports created after training
 tests/         Offline regression tests
 ```
 

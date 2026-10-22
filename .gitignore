@@ -29,6 +29,8 @@ experiments/
 results/
 outputs/
 saved_weights/
+saved_weight/*
+!saved_weight/README.md
 *.npz
 *.npy
 *.pt

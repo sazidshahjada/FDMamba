@@ -31,7 +31,7 @@ from .runtime import (
 
 
 class Trainer:
-    """Train one model/dataset and keep all artifacts inside one experiment folder."""
+    """Train one model/dataset, log its experiment and export selected inference weights."""
 
     def __init__(self, config, dataset, *, name=None, download=False, verbose=True):
         self.config = resolve_config(config)
@@ -42,13 +42,19 @@ class Trainer:
         model_config, data = self.config["model"], self.config["data"]
         if model_config["variant"] in ("B2", "B3") and self.device.type != "cuda":
             raise RuntimeError("B2/B3 need a CUDA device and real Mamba extensions")
-        self.name = run_name(name or model_name(model_config["backbone"], model_config["variant"]))
+        canonical = model_name(model_config["backbone"], model_config["variant"])
+        self.name = run_name(name or canonical)
         self.output_dir = Path(
             self.settings["output_dir"]
             or (
                 f"experiments/{dataset}/{self.name}/size{data['size']}_input{data['image_size']}_seed{self.settings['seed']}"
             )
         ).expanduser()
+        custom = f"_{self.name}" if self.name != canonical else ""
+        self.weights_path = Path(self.settings["weights_dir"]).expanduser() / (
+            f"{canonical}_{dataset}{custom}_size{data['size']}_input{data['image_size']}"
+            f"_seed{self.settings['seed']}.pt"
+        )
         self.verbose = verbose
         seed_everything(self.settings["seed"])
         self.model = build_model(**model_config, num_classes=len(self.classes)).to(self.device)
@@ -125,15 +131,44 @@ class Trainer:
         )
         save_checkpoint(self.output_dir / filename, state)
 
+    def _export_weights(self, state, selected):
+        """Export the selected CPU weights and reconstruction metadata without optimizer state."""
+        exported = {
+            key: state[key]
+            for key in (
+                "format_version",
+                "name",
+                "dataset",
+                "class_names",
+                "model_config",
+                "data_metadata",
+                "model_state",
+                "epoch",
+            )
+        }
+        exported.update(
+            config=self.config,
+            selection=dict(
+                monitor=self.settings["monitor"],
+                score=self.best_score,
+                source_checkpoint=str(selected.resolve()),
+            ),
+        )
+        self.weights_path.parent.mkdir(parents=True, exist_ok=True)
+        save_checkpoint(self.weights_path, exported)
+        if self.verbose:
+            print(f"Saved weights (epoch {state['epoch']}): {self.weights_path}")
+
     def _resume(self):
         """Restore last.pt only when model, data and training settings still match."""
         state = torch.load(self.output_dir / "last.pt", map_location="cpu", weights_only=False)
         if state.get("format_version") != 2:
             raise ValueError("Checkpoint format differs; use a current FDMamba training checkpoint")
         previous, current = deepcopy(state["config"]), deepcopy(self.config)
-        # A complete experiment directory may be relocated without changing the run.
-        previous["training"].pop("output_dir")
-        current["training"].pop("output_dir")
+        # Artifact locations may change without changing the training run.
+        for key in ("output_dir", "weights_dir"):
+            previous["training"].pop(key, None)
+            current["training"].pop(key, None)
         if (
             previous != current
             or state["dataset"] != self.dataset
@@ -188,6 +223,11 @@ class Trainer:
             (self.output_dir / name).exists() for name in ("config.yaml", "last.pt", "best.pt")
         ):
             raise FileExistsError(f"Experiment exists: {self.output_dir}; use --resume or --name")
+        elif self.weights_path.exists():
+            raise FileExistsError(
+                f"Saved weights exist: {self.weights_path}; use --name for a new run "
+                "or --resume with the original experiment"
+            )
         self.output_dir.mkdir(parents=True, exist_ok=True)
         (self.output_dir / "config.yaml").write_text(yaml.safe_dump(self.config, sort_keys=False))
         metadata = dict(
@@ -215,6 +255,7 @@ class Trainer:
                 f"Parameters: {metadata['parameters']:,}; train/val counts: {metadata['class_counts']}"
             )
             print(f"Experiment: {self.output_dir}\nTensorBoard: {self.output_dir / 'tensorboard'}")
+            print(f"Final weights: {self.weights_path}")
         monitor = self.settings["monitor"]
         limit = (
             self.settings["epochs"]
@@ -291,6 +332,7 @@ class Trainer:
                 )
                 state = torch.load(selected, map_location="cpu", weights_only=False)
                 self.model.load_state_dict(state["model_state"], strict=True)
+                self._export_weights(state, selected)
                 del state
                 test_loader = make_loader(self.dataset, "test", self.config["data"])
                 report, targets, probabilities = run_epoch(
@@ -302,7 +344,12 @@ class Trainer:
                     description="Test",
                     verbose=self.verbose,
                 )
-                report.update(dataset=self.dataset, name=self.name, checkpoint=str(selected))
+                report.update(
+                    dataset=self.dataset,
+                    name=self.name,
+                    checkpoint=str(selected),
+                    saved_weight=str(self.weights_path),
+                )
                 write_json(self.output_dir / "test_metrics.json", report)
                 save_predictions(
                     self.output_dir / "test_predictions.csv",

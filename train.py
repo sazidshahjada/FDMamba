@@ -1,4 +1,4 @@
-"""Train a FDMamba model on one MedMNIST dataset."""
+"""Train one FDMamba model/dataset and export selected weights to saved_weight/."""
 
 import argparse
 

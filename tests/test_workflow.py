@@ -74,6 +74,7 @@ class DatasetTests(unittest.TestCase):
                     "warmup_epochs": 0,
                     "device": "cpu",
                     "output_dir": str(self.root / output),
+                    "weights_dir": str(self.root / "saved_weight"),
                 },
             }
         )
@@ -122,6 +123,7 @@ class DatasetTests(unittest.TestCase):
             first = Trainer(config, "pneumoniamnist", name="MobileNet-v1", verbose=False)
             first.fit(stop_after=1)
             self.assertIsNone(first.test_report)
+            self.assertFalse(first.weights_path.exists())
             self.assertEqual([call.args[1] for call in loaders.call_args_list], ["train", "val"])
         resumed = Trainer(config, "pneumoniamnist", name="MobileNet-v1", verbose=False)
         resumed.fit(resume=True)
@@ -145,7 +147,25 @@ class DatasetTests(unittest.TestCase):
         expected = torch.load(continuous.output_dir / "last.pt", weights_only=False)["model_state"]
         for key in actual:
             torch.testing.assert_close(actual[key], expected[key], atol=0, rtol=0)
-        checkpoint = resumed.output_dir / "best.pt"
+        checkpoint = resumed.weights_path
+        self.assertEqual(
+            checkpoint.name,
+            "FDMamba-MobileNetV3-B0_pneumoniamnist_MobileNet-v1_size28_input32_seed42.pt",
+        )
+        self.assertEqual(
+            continuous.weights_path.name,
+            "FDMamba-MobileNetV3-B0_pneumoniamnist_size28_input32_seed42.pt",
+        )
+        exported = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        selected = torch.load(resumed.output_dir / "best.pt", weights_only=False)
+        self.assertEqual(exported["epoch"], resumed.best_epoch)
+        self.assertEqual(exported["selection"]["score"], resumed.best_score)
+        for key in ("optimizer_state", "scheduler_state", "scaler_state", "rng", "history"):
+            self.assertNotIn(key, exported)
+        for key in exported["model_state"]:
+            torch.testing.assert_close(
+                exported["model_state"][key], selected["model_state"][key], atol=0, rtol=0
+            )
         with patch("utils.evaluation.make_loader", wraps=make_loader) as loaders:
             report = evaluate_checkpoint(
                 checkpoint,
@@ -181,10 +201,42 @@ class DatasetTests(unittest.TestCase):
             benchmark([entries[0], entries[0]], output_dir=self.root / "benchmark", verbose=False)
         with self.assertRaises(FileExistsError):
             Trainer(config, "pneumoniamnist", name="MobileNet-v1", verbose=False).fit()
+        with self.assertRaisesRegex(FileExistsError, "Saved weights exist"):
+            Trainer(self.config("new-folder"), "pneumoniamnist", verbose=False).fit()
         modified = deepcopy(config)
         modified["training"]["lr"] *= 2
         with self.assertRaisesRegex(ValueError, "Resume configuration"):
             Trainer(modified, "pneumoniamnist", name="MobileNet-v1", verbose=False).fit(resume=True)
+
+    def test_early_stop_exports_last_when_validation_monitor_is_undefined(self):
+        path = self.root / "pneumoniamnist.npz"
+        with np.load(path) as archive:
+            arrays = dict(archive)
+        # With only one validation class, AUC cannot select a best checkpoint.
+        arrays["val_labels"][:] = 0
+        np.savez_compressed(path, **arrays)
+        config = self.config()
+        config["training"].update(epochs=3, patience=1, monitor="auc")
+        trainer = Trainer(config, "pneumoniamnist", verbose=False)
+        trainer.fit()
+        self.assertEqual(trainer.epoch, 1)
+        self.assertIsNone(trainer.best_epoch)
+        self.assertFalse((trainer.output_dir / "best.pt").exists())
+        exported = torch.load(trainer.weights_path, map_location="cpu", weights_only=False)
+        self.assertEqual(exported["epoch"], 1)
+        self.assertEqual(Path(exported["selection"]["source_checkpoint"]).name, "last.pt")
+        self.assertIsNone(exported["selection"]["score"])
+        last = torch.load(trainer.output_dir / "last.pt", weights_only=False)
+        for key in exported["model_state"]:
+            torch.testing.assert_close(
+                exported["model_state"][key], last["model_state"][key], atol=0, rtol=0
+            )
+        # A completed/early-stopped experiment can regenerate its export without retraining.
+        config["training"]["weights_dir"] = str(self.root / "relocated_weights")
+        resumed = Trainer(config, "pneumoniamnist", verbose=False)
+        resumed.fit(resume=True)
+        self.assertEqual(resumed.epoch, 1)
+        self.assertTrue(resumed.weights_path.exists())
 
 
 class MetricAndEngineTests(unittest.TestCase):

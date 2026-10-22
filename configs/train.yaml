@@ -1,6 +1,7 @@
 # MobileNetV3 recipe. Select the dataset with train.py --dataset.
 # size = native MedMNIST archive; image_size = resized model input.
 # TensorBoard always logs to the experiment directory.
+# See TRAINING_GUIDE.md for all 48 runs in B0 -> B1 -> B2 -> B3 order.
 model:
   backbone: mobilenetv3
   variant: B3
@@ -29,3 +30,4 @@ training:
   seed: 42
   device: auto
   output_dir: null
+  weights_dir: saved_weight

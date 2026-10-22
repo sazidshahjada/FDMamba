@@ -1,8 +1,8 @@
-# Edit checkpoint paths before running: python benchmark.py --config configs/benchmark.yaml
+# After the guide's training runs: python benchmark.py --config configs/benchmark.yaml
 models:
   - name: MobileNet-v1
-    checkpoint: experiments/pathmnist/FDMamba-MobileNetV3-B3/size28_input224_seed42/best.pt
+    checkpoint: saved_weight/FDMamba-MobileNetV3-B3_pathmnist_size28_input224_seed42.pt
     dataset: pathmnist
   - name: ResNet-v1
-    checkpoint: experiments/organamnist/FDMamba-ResNet50-B3/size28_input224_seed42/best.pt
+    checkpoint: saved_weight/FDMamba-ResNet50-B3_organamnist_size28_input224_seed42.pt
     dataset: organamnist

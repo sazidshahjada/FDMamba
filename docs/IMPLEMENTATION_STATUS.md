@@ -1,9 +1,12 @@
-# Rewrite verification — 22 October 2026
+# Implementation verification — 23 October 2026
 
 The repository now has one `FDMamba` model package and four root entry points:
 `train.py`, `download_data.py`, `inference.py`, and `benchmark.py`. Training recipes
 are plain YAML. Data loading and download/cache behavior use MedMNIST directly.
 TensorBoard is mandatory for every training run and writes into that run's folder.
+Completed and early-stopped runs also export validation-selected weights to
+`saved_weight/`. The [training guide](../TRAINING_GUIDE.md) lists all 48 commands in
+B0 → B1 → B2 → B3 order across three backbones and four datasets.
 
 ## Architecture checks
 
@@ -34,7 +37,7 @@ MedMNIST 3.0.2. CUDA is not visible in this session.
 python -m unittest discover -s tests -v
 ```
 
-**10 tests: 9 passed, 1 CUDA-only test skipped.** Subtests cover all three B0/B1
+**11 tests: 10 passed, 1 CUDA-only test skipped.** Subtests cover all three B0/B1
 backbones and the four default datasets. Synthetic archives are created only in
 temporary directories; no network access or real benchmark scores are required.
 
@@ -55,9 +58,16 @@ Verified:
 - Single-image inference matches the corresponding dataset prediction after saved
   preprocessing; incompatible model/dataset selections are rejected.
 - Named checkpoint benchmarking writes comparison CSV/JSON and per-model predictions.
+- Compact exports contain the exact selected weights and reconstruction metadata,
+  omit optimizer/history state, and load directly for inference and benchmarking.
+- Exports are not written for incomplete runs. Early stopping exports the last
+  checkpoint when validation AUC is undefined; completed runs can regenerate
+  exports in a different directory without additional training.
+- Model/variant/dataset/size/seed filenames and custom run names keep outputs
+  distinct. Fresh training refuses to overwrite an existing export.
 
 Ruff lint/format, Python syntax, CLI help, documentation links and stale-import
-checks are run alongside the regression suite.
+checks passed alongside the regression suite.
 
 ## Remaining limits
 

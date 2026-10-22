@@ -33,6 +33,7 @@ DEFAULTS = {
         "seed": 42,
         "device": "auto",
         "output_dir": None,
+        "weights_dir": "saved_weight",
     },
 }
 
