@@ -78,8 +78,9 @@ python train.py --config configs/train.yaml --dataset dermamnist --variant B3 --
 
 `--backbone` accepts `mobilenetv3`, `efficientnet_b0` or `resnet50`.
 `--device cpu`, `--device cuda:0` and `--download` are optional. Without
-`--download`, training uses the existing MedMNIST cache. An interrupted official
-download can be retried with `download_data.py`; it follows MedMNIST's own behavior.
+`--download`, training uses the existing MedMNIST cache. `download_data.py` verifies
+completed archives, reuses them without network access, and resumes interrupted
+transfers from `.npz.part` files (including partial files left by MedMNIST itself).
 
 | Variant | Architecture |
 |---|---|

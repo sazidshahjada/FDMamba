@@ -2,6 +2,7 @@
 
 import csv
 import hashlib
+import io
 import tempfile
 import unittest
 from copy import deepcopy
@@ -107,6 +108,37 @@ class DatasetTests(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected download")):
             download_datasets(["bloodmnist"], root=self.root)
         self.assertTrue((self.root / "bloodmnist.npz").exists())
+
+    def test_download_resumes_partial_archive(self):
+        source = self.root / "bloodmnist.npz"
+        payload = source.read_bytes()
+        source.unlink()
+        cutoff = len(payload) // 3
+        source.write_bytes(payload[:cutoff])  # MedMNIST leaves partial data here.
+
+        class PartialResponse(io.BytesIO):
+            status = 206
+
+            def __init__(self, content):
+                super().__init__(content[cutoff:])
+                self.headers = {
+                    "Content-Length": str(len(content) - cutoff),
+                    "Content-Range": f"bytes {cutoff}-{len(content) - 1}/{len(content)}",
+                }
+
+            def getcode(self):
+                return self.status
+
+        def resume(request):
+            self.assertEqual(request.get_header("Range"), f"bytes={cutoff}-")
+            return PartialResponse(payload)
+
+        with patch("urllib.request.urlopen", side_effect=resume) as urlopen:
+            download_datasets(["bloodmnist"], root=self.root)
+
+        self.assertEqual(urlopen.call_count, 1)
+        self.assertEqual(source.read_bytes(), payload)
+        self.assertFalse((self.root / "bloodmnist.npz.part").exists())
 
     def test_incompatible_tasks_and_missing_data_fail(self):
         for name in ("chestmnist", "organmnist3d", "unknown"):

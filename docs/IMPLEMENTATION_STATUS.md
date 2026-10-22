@@ -75,11 +75,10 @@ No full training or scientific benchmark has been performed. Real CUDA Mamba and
 GPU AMP remain unverified here. The conditional GPU test is available on the
 intended environment; no surrogate Mamba is used.
 
-Full dataset downloads remain the user's normal preparation step. An old partial
-archive from an earlier transfer remains under `data/medmnist/`; MedMNIST does not
-use custom `.part` files. `download_data.py` follows the official module's download
-and retry behavior. Dataset source resolution and model input resolution remain
-separate settings; defaults are 28 → 224.
+Full dataset downloads remain the user's normal preparation step. The downloader
+validates cached archives by their official MD5 checksums, migrates an incomplete
+final file to `.npz.part`, and uses HTTP range requests to resume it. Dataset source
+resolution and model input resolution remain separate settings; defaults are 28 → 224.
 
 Evaluation timing includes data loading/preprocessing and inference, without a
 controlled warm-up protocol. It is useful run throughput, not isolated model
