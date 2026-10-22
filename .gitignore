@@ -1,132 +1,45 @@
-# FD-MambaDR — Python / PyTorch research project
-# Keep source code, configs, documentation, and reproducibility metadata in Git.
-
-# Python bytecode and caches
+# Python and local tooling
 __pycache__/
 *.py[cod]
-*$py.class
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
-.pyre/
-.hypothesis/
+.mypy_cache/
 .coverage
-.coverage.*
 htmlcov/
-.tox/
-.nox/
-
-# Local environments and secrets
 .venv/
 venv/
-env/
-ENV/
-.conda/
+*.egg-info/
+build/
+dist/
+.vscode/
+.idea/
+.ipynb_checkpoints/
+
+# Secrets and local configuration
 .env
 .env.*
 !.env.example
-*.local
 *.pem
 *.key
 
-# Packaging and build artifacts
-build/
-dist/
-*.egg-info/
-.eggs/
-*.egg
-pip-wheel-metadata/
-
-# IDE and OS files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# Notebook-generated caches (do not ignore .ipynb source notebooks)
-.ipynb_checkpoints/
-
-# Dataset files (never commit raw or derived patient/image data)
-data/raw/
-data/processed/
-data/downloads/
-data/cache/
-data/splits/
-datasets/
-*.tfrecord
-*.tfrecords
-*.h5
-*.hdf5
-*.npy
+# Data and generated experiment artifacts
+data/*
+!data/README.md
+experiments/
+results/
+outputs/
+saved_weights/
 *.npz
-*.parquet
-# Preserve documentation/placeholders in ignored data directories
-!data/**/.gitkeep
-
-# Trained weights / checkpoints
+*.npy
 *.pt
 *.pth
 *.ckpt
-*.safetensors
-*.onnx
-*.engine
-*.tflite
-*.pb
-*.weights
-checkpoints/
-weights/
-saved_weights/
-pretrained/
-
-# Runtime experiment artifacts (source scripts/configurations should stay tracked)
-experiments/*/
-!experiments/.gitkeep
-runs/
-wandb/
-mlruns/
-lightning_logs/
-tensorboard/
 events.out.tfevents.*
-logs/
-*.log
 
-# Generated evaluation and visualization outputs
-results/
-outputs/
-predictions/
-reports/generated/
-figures/generated/
-benchmark_outputs/
-
-# Temporary files and archives
-.tmp/
-tmp/
+# Temporary and OS files
 *.tmp
-*.bak
-*.orig
-*.zip
-*.tar
-*.tar.gz
-*.7z
-*.rar
-
-# LaTeX compilation intermediates (keep .tex, .bib, and source figures)
-*.aux
-*.bbl
-*.bcf
-*.blg
-*.fdb_latexmk
-*.fls
+*.part
 *.log
-*.out
-*.run.xml
-*.synctex.gz
-*.toc
-*.lof
-*.lot
-
-# Optional: uncomment to exclude compiled reports
-# reports/*.pdf
+*.swp
+.DS_Store
+Thumbs.db

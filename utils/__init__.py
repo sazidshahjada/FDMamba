@@ -1,1 +1,1 @@
-"""Data loading, training and evaluation utilities for FD-MambaDR."""
+"""Data, training, evaluation and configuration helpers for FDMamba."""

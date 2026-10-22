@@ -1,12 +1,36 @@
-# CPU/basic dependencies. Install the appropriate torch/torchvision wheel pair first.
-# B2/B3 additionally require the CUDA extension environment in environment.yml.
-torch==2.5.1
-torchvision==0.20.1
-timm==0.9.16
+# Full pip equivalent of environment.yml.
+# Requires CPython 3.11 on Linux x86_64 / WSL2 and a CUDA 12.4-compatible NVIDIA driver.
+# Python and the NVIDIA driver must be installed separately; pip installs the CUDA runtime.
+# Setup:
+#   python3.11 -m venv .venv
+#   source .venv/bin/activate
+#   python -m pip install --upgrade "pip>=24.3,<26"
+#   python -m pip install -r requirements.txt
+#   python -m pip check
+
+# Pin the CUDA builds so an existing CPU-only torch cannot satisfy these requirements.
+--extra-index-url https://download.pytorch.org/whl/cu124
+pip>=24.3,<26
+torch==2.5.1+cu124
+torchvision==0.20.1+cu124
+
 numpy==1.26.4
+scipy==1.14.1
+pandas==2.2.3
 scikit-learn==1.5.2
 Pillow==11.0.0
 matplotlib==3.9.2
 PyYAML==6.0.2
-einops==0.8.0
 tqdm==4.67.1
+tensorboard==2.18.0
+
+timm==0.9.16
+einops==0.8.0
+transformers==4.46.3
+
+# Official prebuilt extensions for torch 2.5, CUDA 12, CPython 3.11 and ABI=FALSE.
+# Direct wheels avoid compiling against a different torch under build isolation.
+https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.4/causal_conv1d-1.5.4%2Bcu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+https://github.com/state-spaces/mamba/releases/download/v2.2.4/mamba_ssm-2.2.4%2Bcu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+
+medmnist==3.0.2

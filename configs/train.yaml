@@ -1,32 +1,31 @@
-# Edit dataset paths and output_dir. Paths resolve from the working directory.
+# MobileNetV3 recipe. Select the dataset with train.py --dataset.
+# size = native MedMNIST archive; image_size = resized model input.
+# TensorBoard always logs to the experiment directory.
 model:
   backbone: mobilenetv3
-  variant: B0                     # B0, B1, B2 or B3
-  num_classes: 5
-  pretrained: false
-  # For B1/B3, optionally set fdconv: {layer_path: blocks.2.2.conv_pwl}
-  # For B2/B3, optionally set mamba: {hidden_dim: 64}
+  variant: B3
+  drop_rate: 0.2
 data:
-  train_path: data/processed/Unified_DR_(EyePacsAptos,Messidor)/augmented_resized_V2/train
-  val_path: data/processed/Unified_DR_(EyePacsAptos,Messidor)/augmented_resized_V2/val
-  test_path: data/processed/Unified_DR_(EyePacsAptos,Messidor)/augmented_resized_V2/test  # Evaluated after training; set null to skip.
+  root: data/medmnist
+  size: 28
   image_size: 224
   batch_size: 32
   num_workers: 0
-  augment: false                 # Current dataset already has offline augmentation.
-  mean: null                     # Or three training-fitted RGB means.
-  std: null                      # Or three training-fitted RGB standard deviations.
-loss:
-  name: balanced_ce              # Training-label inverse-frequency cross-entropy.
+  augment: false
+  mean: null
+  std: null
 training:
-  output_dir: experiments/MNV3_B0_seed42
-  saved_weights_dir: saved_weights  # Descriptive best/last checkpoints for later testing.
-  seed: 42
   epochs: 100
   warmup_epochs: 5
-  patience: 15
-  device: null                   # Automatically use CUDA if available.
-  amp: false                     # Enable only after device-specific smoke tests.
-  optimizer_kwargs:
-    lr: 0.0001
-    weight_decay: 0.0001
+  lr: 0.001
+  weight_decay: 0.0001
+  patience: 20
+  monitor: macro_f1
+  class_weighted: true
+  label_smoothing: 0.0
+  accumulation_steps: 1
+  max_grad_norm: 1.0
+  amp: false
+  seed: 42
+  device: auto
+  output_dir: null

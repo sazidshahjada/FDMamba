@@ -1,80 +1,71 @@
-# Architecture and extension guide
+# FDMamba architecture
 
-## Fixed model behavior
+`FDMamba.build_model(backbone, variant, num_classes)` is the single constructor.
+It uses timm 0.9.16 without pretrained weights. The backbone's feature extraction,
+pooling, projection and classifier stay intact. Grayscale images are replicated
+to RGB in preprocessing; only the native classifier output width changes by dataset.
 
-B0 is the exact selected timm family with a five-logit classifier and no pretrained
-weights. `Backbone.forward_features` exposes spatial features; `forward_head`
-retains native pooling, projection and classifier behavior. MobileNet's spatial
-width is 960 while its native classifier embedding is 1280; these are intentionally
-different and the optional dense wrapper preserves that projection.
+| Variant | Class | Computation |
+|---|---|---|
+| B0 | Backbone | Native CNN |
+| B1 | FDConvBackbone | Native CNN with one eligible convolution replaced |
+| B2 | MambaBackbone | CNN → local/global fusion → native head |
+| B3 | HybridBackbone | B1 backbone → identical B2 fusion → native head |
 
-B1 uses the supplied FDConv algorithm at one compatible ungrouped convolution.
-The adapter preserves stride, padding, dilation, groups and bias semantics and
-rejects silently inactive FDConv configurations. Fourier conversion starts from
-a new random kernel. It does not transplant pretrained weights.
+All four classes and `build_model` are exported by `FDMamba`. Implementations are
+organized into `backbone.py`, `fdconv.py`, `fusion.py` and `models.py`. Module nesting
+and parameter names match the previous architecture. `FDConv.py` retains the
+supplied standalone algorithm without numerical changes.
 
-B2 and B3 share `LocalGlobalMambaFusion`:
+## FDConv
 
-1. Project final spatial CNN features to a configurable bottleneck (default 64).
-2. Share that projection between a depthwise/pointwise local branch and a raster
-   sequence of length `height * width` processed by LayerNorm and real Mamba.
-3. Predict a sigmoid gate from the concatenated branch outputs.
-4. Mix `gate * global + (1 - gate) * local`, project to the original channels,
-   and add a learned scaled residual (initial scale 0.01).
-5. Apply the original backbone head.
-
-Fusion runs after `forward_features`, before `forward_head`. B3 adds only the
-backbone FDConv relative to B2; it has no extra FDConv inside fusion. This preserves
-the uploaded shared-projection adaptation, including its one-direction raster
-scan. It is not an exact MambaLiteUNet reproduction. No segmentation code is used.
-
-## Default FDConv sites (timm 0.9.16)
-
-| Backbone | Path | Channels | Kernel | Default FBM |
+| Backbone | Replacement path | Channels | Kernel | Default FBM |
 |---|---|---|---|---|
-| MobileNetV3-Large | `blocks.2.2.conv_pwl` | 120 to 40 | 1 x 1 | Off |
-| EfficientNet-B0 | `blocks.2.0.conv_pwl` | 144 to 40 | 1 x 1 | Off |
-| ResNet-50 | `layer3.3.conv2` | 256 to 256 | 3 x 3 | On |
+| MobileNetV3-Large | blocks.2.2.conv_pwl | 120 → 40 | 1×1 | Off |
+| EfficientNet-B0 | blocks.2.0.conv_pwl | 144 → 40 | 1×1 | Off |
+| ResNet-50 | layer3.3.conv2 | 256 → 256 | 3×3 | On |
 
-FDW and KSM remain active at all three sites. Pointwise replacement in MobileNet
-and EfficientNet is an existing compatibility choice: their spatial convolutions
-are depthwise. This cross-backbone difference must be reported. Configurations
-built through `build_model` record the resolved path so evaluation does not need
-to repeat auto-selection. Pin timm and pass explicit sites for final experiments.
+FDW and KSM are active at each site. MobileNet/EfficientNet use ungrouped pointwise
+convolutions because their spatial convolutions are depthwise. This difference
+must be acknowledged in comparisons. The adapter preserves convolution semantics
+and rejects unsupported/inactive configurations. FFT operations run in FP32 under
+autocast. The factory records the resolved site in every saved model configuration.
 
-## Reuse without changing the experiment
+The supplied FDConv includes previously existing standalone fixes for singleton
+pooled descriptors, actual FFT grid sizes, odd inverse-FFT shapes, kernel grouping,
+initialization and checkpointing. Those implementations were not changed by this rewrite.
 
-- **New backbone:** extend `Backbone`'s name map and confirm spatial channel count,
-  native head behavior and FDConv eligibility. Add forward/backward tests before
-  using it in the experimental matrix.
-- **New data source:** supply a deterministic `Dataset` and `DataLoader` to
-  `Trainer.evaluate`. Preserve class order and saved normalization. Folder-based
-  sources can use `create_eval_loader`; CSV-based sources need an adapter. Useful
-  metadata attributes are `samples`, `targets`, `classes`, `class_to_idx`, `root`,
-  `normalization_mean`, and `normalization_std`.
-- **New fusion:** implement a BCHW-to-BCHW module, then deliberately register a new
-  variant. Keep B2/B3 matched for the existing ablation.
-- **New head:** use `BackboneWrapper`, with identical settings for paired variants.
-- **New loss/optimizer/scheduler:** pass them to `Trainer`. Advanced callbacks and
-  hooks remain available for notebook compatibility; ordinary runs need none.
+## Mamba fusion
 
-`EpochRunner` is an internal execution base, not a second trainer API. The public
-`Trainer` owns the model, loss, optimizer, configuration and checkpoint lifecycle.
-Epoch losses use summed numerators and the appropriate denominator (CE target
-weights or nonignored sample count). Gradient accumulation preserves that same
-normalization, including the final partial accumulation window.
+A shared 1×1 projection compresses the final spatial features to 64 channels by
+default. One branch applies depthwise/pointwise local convolutions; the other
+flattens the grid into a raster sequence, applies LayerNorm and real Mamba, then
+reshapes it back. A sigmoid gate combines the two branches. A final projection,
+optional dropout and learned residual scale (initially 0.01) produce the output.
+The original backbone classifier consumes the fused features.
 
-## Compatibility
+There is no segmentation decoder, bidirectional scan or additional FDConv inside
+fusion. B2/B3 share precisely this block. Their real kernels require CUDA.
+MobileNet's spatial feature width is 960, while its classifier embedding is 1280;
+the original head preserves that projection.
 
-Existing model class paths, factory convenience functions, `Trainer`, loss/metric
-APIs and `utils.loaders.visualize_images` remain available. Moved fusion classes
-are re-exported from their original modules. Model parameter paths and numerical
-architecture are retained. New metadata makes some legacy **full trainer**
-checkpoint signatures incompatible; exact old-run resume is not promised. The
-original constructor plus a strict `model.load_state_dict` can restore compatible
-model-only states for evaluation. Never strip checkpoint guards to force a resume.
+Optional advanced settings can be specified in the training YAML:
 
-The CLI intentionally covers native-head experiments. It does not dynamically
-import arbitrary classes from YAML, duplicate twelve training pipelines, or fit
-external statistics. A configured test loader is evaluated once after training
-using the checkpoint selected on validation.
+```yaml
+model:
+  backbone: mobilenetv3
+  variant: B3
+  drop_rate: 0.2
+  fdconv:
+    layer_path: blocks.2.2.conv_pwl
+    kernel_num: 4
+  mamba:
+    hidden_dim: 64
+    d_state: 16
+    d_conv: 4
+    expand: 2
+```
+
+Inactive options are rejected: FDConv settings require B1/B3, Mamba settings require
+B2/B3. Keep settings matched within the intended ablation. Refer to `build_model`
+for accepted options and [verification](IMPLEMENTATION_STATUS.md) for tested limits.

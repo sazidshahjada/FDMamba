@@ -1,0 +1,28 @@
+model:
+  backbone: efficientnet_b0
+  variant: B3
+  drop_rate: 0.2
+data:
+  root: data/medmnist
+  size: 28
+  image_size: 224
+  batch_size: 16
+  num_workers: 0
+  augment: false
+  mean: null
+  std: null
+training:
+  epochs: 120
+  warmup_epochs: 8
+  lr: 0.00075
+  weight_decay: 0.0001
+  patience: 25
+  monitor: macro_f1
+  class_weighted: true
+  label_smoothing: 0.0
+  accumulation_steps: 2
+  max_grad_norm: 1.0
+  amp: false
+  seed: 42
+  device: auto
+  output_dir: null

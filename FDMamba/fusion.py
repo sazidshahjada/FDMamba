@@ -9,21 +9,9 @@ from torch import Tensor, nn
 
 
 class LocalGlobalMambaFusion(nn.Module):
-    """Lightweight residual fusion of local 2-D conv and global Mamba features.
+    """Fuse a shared local-convolution/Mamba projection with a gated residual.
 
-    Args:
-        in_channels: Channels in the backbone's final spatial feature tensor.
-        hidden_dim: Bottleneck channels for each branch.
-        d_state: Mamba state dimension.
-        d_conv: Mamba's internal local convolution width.
-        expand: Mamba expansion factor.
-        dropout: Dropout on the fused residual branch.
-
-    Input/output: (B, C, H, W) -> (B, C, H, W).
-    Mamba sequences are raster-scanned over H*W positions; there is no attention
-    or segmentation decoder. This is a new minimal design inspired by general
-    local/global fusion, NOT a reproduction of MambaLiteUNet's AMF/LGFM/CGA.
-    """
+    Input and output are BCHW; the Mamba branch scans the flattened spatial grid."""
 
     def __init__(
         self,

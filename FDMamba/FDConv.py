@@ -30,6 +30,7 @@ class StarReLU(nn.Module):
         return self.scale * self.relu(x) ** 2 + self.bias
 
 class KernelSpatialModulation_Global(nn.Module):
+    """Predict global channel, filter, spatial and kernel modulation weights."""
     def __init__(self, in_planes, out_planes, kernel_size, groups=1, reduction=0.0625, kernel_num=4, min_channel=16,
                  temp=1.0, kernel_temp=None, kernel_att_init='dyconv_as_extra', att_multi=2.0, ksm_only_kernel_att=False, att_grid=1, stride=1, spatial_freq_decompose=False,
                  act_type='sigmoid'):
@@ -200,6 +201,7 @@ class KernelSpatialModulation_Global(nn.Module):
 
 
 class KernelSpatialModulation_Local(nn.Module):
+    """Predict local frequency-kernel modulation weights from pooled features."""
     """Constructs a ECA module.
 
     Args:
@@ -243,6 +245,7 @@ class KernelSpatialModulation_Local(nn.Module):
 # import torch.nn.functional as F
 
 class FrequencyBandModulation(nn.Module):
+    """Reweight spatial frequency bands with content-dependent gates."""
     def __init__(self,
                 in_channels,
                 k_list=(2,),
@@ -403,6 +406,7 @@ def get_fft2freq(d1, d2, use_rfft=False):
     return sorted_coords.permute(1, 0), freq_hw
 
 class FDConv(nn.Conv2d):
+    """Construct and apply input-adaptive, frequency-modulated convolution kernels."""
     def __init__(self,
                  *args,
                  reduction=0.0625,

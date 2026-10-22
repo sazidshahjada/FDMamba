@@ -1,11 +1,4 @@
-"""Selective FDConv-only CNN variants, with random initialization.
-
-This replaces ONE compatible nn.Conv2d in an otherwise unchanged timm
-backbone. It intentionally does not add any Mamba components.
-
-The supplied Fourier/kernel modulation implementation is in fdmambadr/FDConv.py.
-Standalone classification does not require MMCV.
-"""
+"""Replace one compatible backbone convolution with the supplied FDConv."""
 
 from __future__ import annotations
 
@@ -70,12 +63,7 @@ def _compatible(
 
 
 class FP32FDConv(nn.Module):
-    """Compute frequency-domain operations in FP32, including under CUDA AMP.
-
-    The supplied implementation uses FFT and creates float32 intermediates.
-    This wrapper keeps the layer's external dtype contract, though the full
-    backward and AMP performance require CUDA verification.
-    """
+    """Run the supplied FFT-based convolution in FP32, preserving the input dtype."""
 
     def __init__(self, layer: nn.Module):
         super().__init__()
@@ -97,20 +85,7 @@ class FP32FDConv(nn.Module):
 
 
 class FDConvBackbone(Backbone):
-    """CNN with a selected standard Conv2d replaced by true FDConv.
-
-    Args:
-        name: mobilenetv3, efficientnet_b0, resnet50.
-        layer_path: Explicit path relative to ``self.model``, recommended
-            for reproducible comparisons. When absent, automatically selects
-            a compatible candidate and records ``replacement``.
-        max_channels: Restricts expensive dynamic kernel construction.
-        kernel_num: Number of FDConv frequency kernel groups.
-        fdconv_kwargs: Extra supported FDConv constructor options.
-
-    WARNING: Auto-selection is architecture/version dependent. Record the
-    selected layer and pin timm version in every experiment configuration.
-    """
+    """B1: replace one compatible convolution and record its exact location."""
 
     def __init__(
         self,
@@ -129,7 +104,7 @@ class FDConvBackbone(Backbone):
         try:
             from .FDConv import FDConv
         except ImportError as exc:
-            raise ImportError("Cannot load fdmambadr.FDConv.") from exc
+            raise ImportError("Cannot load FDMamba.FDConv.") from exc
         candidates = [
             (path, layer)
             for path, layer in self.model.named_modules()
@@ -224,8 +199,3 @@ class FDConvBackbone(Backbone):
         )
         parent, key = _get_parent(self.model, layer_path)
         setattr(parent, key, FP32FDConv(new_layer))
-
-
-def create_fdconv_backbone(name: str, **kwargs) -> FDConvBackbone:
-    """Construct a scratch classifier with one active FDConv replacement."""
-    return FDConvBackbone(name, **kwargs)
